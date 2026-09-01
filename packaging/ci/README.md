@@ -16,7 +16,7 @@ git push
 
 | Job | Runner | Artifacts |
 |---|---|---|
-| `test` | ubuntu / windows / macos | runs `pytest -q` on all three |
+| `test` | ubuntu / windows / macos | runs `pytest -q` on all three, plus the JSDOM drag-and-drop suite in `tests/frontend/` |
 | `build` | `windows-latest` | `TimetableGenerator.exe`, `.zip`, `.msi` |
 | `build` | `ubuntu-22.04` | binary, `.tar.gz`, `.deb` |
 | `build` | `macos-13` | Intel `.dmg` |

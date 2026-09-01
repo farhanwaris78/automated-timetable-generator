@@ -82,7 +82,7 @@
     future: [],
     manageTab: "teachers",
     project: { name: "Untitled project", path: null, savedAt: null, recent: [], home: "", suffix: ".ttproj" },
-    fs: { cwd: "", mode: "open", selected: null, newFolder: false }
+    fs: { cwd: "", mode: "open", selected: null, newFolder: false, writable: true, roots: [], places: [], files: [], dirs: [] }
   };
 
   var uidSeq = 1;
@@ -142,7 +142,8 @@
     up: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
     open: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"/><path d="M3 11l1.6 7.2A2 2 0 0 0 6.6 20h10.8a2 2 0 0 0 2-1.6L21 11z"/></svg>',
     save: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg>',
-    plus: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>'
+    plus: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+    drive: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>'
   };
 
   function icon(name) { return ICONS[name] || ""; }
@@ -449,7 +450,6 @@
       if (query && haystack.indexOf(query) === -1) return;
 
       var card = el("div", "course-card" + (isPlaced ? " is-placed" : ""));
-      card.draggable = true;
       card.style.backgroundColor = course.color;
       card.style.color = readableInk(course.color);
       card.dataset.courseId = course.id;
@@ -474,11 +474,14 @@
         (course.semester ? "Sem " + course.semester + " · " : "") + course.num_students + " std"));
       card.appendChild(meta);
 
-      card.addEventListener("dragstart", function (event) {
-        event.dataTransfer.effectAllowed = "copy";
-        event.dataTransfer.setData("text/plain", JSON.stringify({
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label",
+        "Course " + course.name + " section " + course.section +
+        ". Press Enter to pick it up, then Enter on a free slot to schedule it.");
+      wireDragSource(card, function () {
+        return {
           type: "catalogue", course_id: course.id, section: course.section, kind: course.kind || "theory"
-        }));
+        };
       });
 
       host.appendChild(card);
@@ -568,7 +571,22 @@
       return true;
     });
     if (!pool.length) {
-      toast("No rooms", "No rooms match the selected building/type filter.", "error");
+      /* A blank project legitimately has no rooms yet - that is a normal
+         starting state, not an error, so guide the user instead of scolding
+         them.  Only a filter that hides existing rooms is a real problem. */
+      state.slots[state.shift] = built;
+      state.gridRooms = [];
+      renderAll();
+      if (!state.rooms.length) {
+        if (!options.silent) {
+          toast("Add a room first",
+            "This project has no classrooms yet. Press Alt+B to add a building, then Alt+R to add rooms " +
+            "(or import everything from Excel with Ctrl+I).", "info", 9000);
+        }
+      } else {
+        toast("No rooms match", "No rooms match the selected building/type filter. Clear the filters above.", "warning");
+      }
+      persistConfig();
       return false;
     }
 
@@ -666,6 +684,42 @@
       return;
     }
 
+    /* Blank project: the grid has time slots but nowhere to put a class.
+       Give the user the exact next steps rather than an empty table. */
+    if (!state.gridRooms.length) {
+      var empty = el("div", "placeholder");
+      empty.appendChild(el("h3", null, state.rooms.length
+        ? "No rooms match your filters"
+        : "This project is empty — let's set it up"));
+      if (state.rooms.length) {
+        empty.appendChild(el("p", null,
+          "Clear the Building / Room type filters above, then press Generate grid (Ctrl+G)."));
+      } else {
+        var steps = el("ol", "empty-steps");
+        [
+          ["Add a building", "Alt+B", "addBuilding"],
+          ["Add classrooms and labs", "Alt+R", "addRoom"],
+          ["Add teachers", "Alt+T", "addTeacher"],
+          ["Add courses and their sections", "Alt+C", "addCourse"],
+          ["Generate the grid, then drag courses in", "Ctrl+G", "generate"]
+        ].forEach(function (step) {
+          var li = el("li");
+          var button = el("button", "btn btn-tiny", step[0]);
+          button.type = "button";
+          button.addEventListener("click", function () { runAction(step[2]); });
+          li.appendChild(button);
+          li.appendChild(el("kbd", null, step[1]));
+          steps.appendChild(li);
+        });
+        empty.appendChild(steps);
+        var shortcut = el("p", "muted",
+          "Already have the data in a spreadsheet? Import teachers, rooms and courses in one go with Ctrl+I.");
+        empty.appendChild(shortcut);
+      }
+      host.appendChild(empty);
+      return;
+    }
+
     var table = el("table", "timetable");
     var thead = el("thead");
     var headRow = el("tr");
@@ -716,7 +770,6 @@
       (isLab(placement) ? " is-lab" : "") +
       (dimmed ? " is-dimmed" : "") +
       (state.selectedUid === placement.uid ? " selected" : ""));
-    node.draggable = true;
     node.dataset.uid = placement.uid;
     node.style.backgroundColor = course.color;
     node.style.color = readableInk(course.color);
@@ -754,11 +807,13 @@
     }
     if (tips.length) node.title = tips.join("\n");
 
-    node.addEventListener("dragstart", function (event) {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", JSON.stringify({ type: "placed", uid: placement.uid }));
+    wireDragSource(node, function () {
+      return { type: "placed", uid: placement.uid };
     });
     node.addEventListener("click", function (event) {
+      // A click while carrying something must reach the cell underneath so the
+      // class can be swapped in; only a plain click opens the details.
+      if (pickedUp) return;
       event.stopPropagation();
       state.selectedUid = placement.uid;
       showCourseDetails(placement);
@@ -838,30 +893,200 @@
   }
 
   /* ----------------------------- drag & drop ------------------------------ */
+  /* Why this is hand-rolled rather than three one-line listeners:
+   *
+   * 1. `dataTransfer.getData()` is BLOCKED during dragover/dragenter in every
+   *    browser, and returns "" during `drop` in the WebView2/WKWebView shells
+   *    used by the desktop window.  Relying on it alone is exactly why nothing
+   *    could be dropped onto the grid.  We therefore keep the payload in a
+   *    module variable (`dragPayload`) and treat dataTransfer as a *fallback*
+   *    for drags coming from outside the page.
+   * 2. `effectAllowed` and `dropEffect` must agree.  The catalogue cards used
+   *    to advertise `effectAllowed = "copy"` while the cells answered
+   *    `dropEffect = "move"`; per the HTML5 spec that mismatch makes the drop
+   *    a no-op, so the card simply sprang back.  Both sides now use "copyMove"
+   *    / a matching effect.
+   * 3. `dragenter` must ALSO call preventDefault(), not just `dragover` -
+   *    otherwise the very first event of the sequence already rejects the
+   *    target on Chromium.
+   * 4. Nested elements fire dragleave when the pointer crosses a child, which
+   *    made the highlight flicker and vanish; a per-cell enter/leave counter
+   *    fixes that.
+   * 5. Keyboard and touch users get the same power through "pick up / place"
+   *    (Enter or Space on a card, then Enter on a cell), because a scheduling
+   *    tool that only works with a mouse is not accessible.
+   */
+  var dragPayload = null;        // the authoritative payload for this drag
+  var dragGhostCleanup = null;   // removes the custom drag image, if any
+  var pickedUp = null;           // keyboard / tap "carry" mode
+
+  function setDragPayload(payload) {
+    dragPayload = payload || null;
+    document.body.classList.toggle("is-dragging", !!payload);
+  }
+
+  function clearDragPayload() {
+    setDragPayload(null);
+    if (dragGhostCleanup) { dragGhostCleanup(); dragGhostCleanup = null; }
+    $$(".slot.dragover, .slot.drop-blocked").forEach(function (cell) {
+      cell.classList.remove("dragover", "drop-blocked");
+      cell._dragDepth = 0;
+    });
+    var host = $("#coursesList");
+    if (host) host.classList.remove("dragover");
+  }
+
+  /* The payload for the current drag: the in-memory copy first (always
+     readable), the dataTransfer text second (cross-window drags). */
   function readDragPayload(event) {
-    try { return JSON.parse(event.dataTransfer.getData("text/plain") || "{}"); }
-    catch (err) { return {}; }
+    if (dragPayload) return dragPayload;
+    try {
+      var raw = event && event.dataTransfer ? event.dataTransfer.getData("text/plain") : "";
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  /* Attach the payload to a draggable node.  Used by both the catalogue cards
+     and the placed classes so the two behave identically. */
+  function wireDragSource(node, buildPayload) {
+    node.draggable = true;
+
+    node.addEventListener("dragstart", function (event) {
+      var payload = buildPayload();
+      setDragPayload(payload);
+      if (event.dataTransfer) {
+        // "copyMove" matches the cells' dropEffect; without this the drop is
+        // rejected outright by the browser.
+        try { event.dataTransfer.effectAllowed = "copyMove"; } catch (err) { /* IE-ish */ }
+        try { event.dataTransfer.setData("text/plain", JSON.stringify(payload)); } catch (err) { /* noop */ }
+        // Some shells require a second, non-text format to start a drag.
+        try { event.dataTransfer.setData("application/x-ttg-item", JSON.stringify(payload)); } catch (err) { /* noop */ }
+        if (event.dataTransfer.setDragImage) {
+          try { event.dataTransfer.setDragImage(node, Math.min(60, node.offsetWidth / 2), 18); }
+          catch (err) { /* not supported - the default ghost is fine */ }
+        }
+      }
+      node.classList.add("is-dragging-source");
+    });
+
+    node.addEventListener("dragend", function () {
+      node.classList.remove("is-dragging-source");
+      clearDragPayload();
+    });
+
+    /* Keyboard / touch equivalent: pick the item up, then choose a slot. */
+    node.tabIndex = 0;
+    node.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      pickUp(buildPayload(), node);
+    });
+  }
+
+  function pickUp(payload, node) {
+    if (pickedUp && pickedUp.node) pickedUp.node.classList.remove("is-carried");
+    pickedUp = { payload: payload, node: node };
+    if (node) node.classList.add("is-carried");
+    document.body.classList.add("is-carrying");
+    toast("Class picked up",
+      "Now click (or press Enter on) the slot where it should go. Press Esc to cancel.",
+      "info", 6000);
+  }
+
+  function cancelPickUp(quiet) {
+    if (!pickedUp) return;
+    if (pickedUp.node) pickedUp.node.classList.remove("is-carried");
+    pickedUp = null;
+    document.body.classList.remove("is-carrying");
+    if (!quiet) toast("Cancelled", "Nothing was moved.", "info", 2000);
+  }
+
+  function targetFromCell(cell) {
+    return {
+      day: state.activeDay,
+      start: cell.dataset.start,
+      end: cell.dataset.end,
+      room_id: parseInt(cell.dataset.roomId, 10)
+    };
+  }
+
+  /* Apply a payload to a slot - the single place where a drop is committed,
+     shared by mouse drops, keyboard placement and taps. */
+  function dropOnto(payload, cell) {
+    if (!payload || !payload.type) return false;
+    var target = targetFromCell(cell);
+    if (isNaN(target.room_id) || !target.start) return false;
+
+    if (payload.type === "catalogue") {
+      addPlacement(payload.course_id, payload.section, payload.kind, target);
+      return true;
+    }
+    if (payload.type === "placed") {
+      movePlacement(payload.uid, target);
+      return true;
+    }
+    return false;
   }
 
   function wireDropTarget(cell) {
-    cell.addEventListener("dragover", function (event) {
+    cell._dragDepth = 0;
+
+    function allow(event) {
+      // Both dragenter AND dragover must preventDefault() for the cell to be
+      // a valid drop target - missing either one silently kills the drop.
       event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      cell.classList.add("dragover");
+      if (event.dataTransfer) {
+        var payload = dragPayload;
+        event.dataTransfer.dropEffect = payload && payload.type === "catalogue" ? "copy" : "move";
+      }
+    }
+
+    cell.addEventListener("dragenter", function (event) {
+      allow(event);
+      cell._dragDepth = (cell._dragDepth || 0) + 1;
+      var payload = dragPayload;
+      var busy = payload && occupied(targetFromCell(cell), payload.type === "placed" ? payload.uid : null);
+      cell.classList.add(busy ? "drop-blocked" : "dragover");
     });
-    cell.addEventListener("dragleave", function () { cell.classList.remove("dragover"); });
+
+    cell.addEventListener("dragover", allow);
+
+    cell.addEventListener("dragleave", function () {
+      cell._dragDepth = Math.max(0, (cell._dragDepth || 0) - 1);
+      if (!cell._dragDepth) cell.classList.remove("dragover", "drop-blocked");
+    });
+
     cell.addEventListener("drop", function (event) {
       event.preventDefault();
-      cell.classList.remove("dragover");
+      event.stopPropagation();
+      cell._dragDepth = 0;
+      cell.classList.remove("dragover", "drop-blocked");
       var payload = readDragPayload(event);
-      var target = {
-        day: state.activeDay,
-        start: cell.dataset.start,
-        end: cell.dataset.end,
-        room_id: parseInt(cell.dataset.roomId, 10)
-      };
-      if (payload.type === "catalogue") addPlacement(payload.course_id, payload.section, payload.kind, target);
-      else if (payload.type === "placed") movePlacement(payload.uid, target);
+      clearDragPayload();
+      if (!dropOnto(payload, cell)) {
+        toast("Could not place that", "Drag a course card from the list on the left.", "warning", 4000);
+      }
+    });
+
+    // Click-to-place completes a keyboard / touch pick-up.
+    cell.addEventListener("click", function () {
+      if (!pickedUp) return;
+      var payload = pickedUp.payload;
+      cancelPickUp(true);
+      dropOnto(payload, cell);
+    });
+
+    cell.tabIndex = 0;
+    cell.addEventListener("keydown", function (event) {
+      if (!pickedUp || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      var payload = pickedUp.payload;
+      cancelPickUp(true);
+      dropOnto(payload, cell);
     });
   }
 
@@ -1287,6 +1512,14 @@
     state.fs.selected = null;
     state.fs.newFolder = false;
     $("#fsNewFolderRow").hidden = true;
+    var sampleRow = $("#projectSampleRow");
+    if (sampleRow) {
+      sampleRow.hidden = mode !== "new";
+      var toggle = $("#projectSampleData");
+      if (toggle) toggle.checked = false;   // blank is always the default
+    }
+    var preview = $("#fsSaveTarget");
+    if (preview) preview.hidden = mode !== "saveAs";
 
     var title = $("#projectDialogTitle");
     var primary = $("#projectPrimaryBtn");
@@ -1304,13 +1537,17 @@
       browse.hidden = true;
       recent.hidden = true;
       nameRow.hidden = false;
-      hint.textContent = "A new project starts from the sample data. The current data is backed up automatically; save it as a file afterwards with Save as.";
+      primary.disabled = false;
+      hint.textContent = "A new project is completely empty — no courses, teachers, buildings, rooms or " +
+        "scheduled classes. The current data is backed up automatically; save the new project with Save as.";
     } else if (mode === "saveAs") {
       title.textContent = "Save project as";
       primary.textContent = "Save project in this folder";
       $("#projectNameInput").value = state.project.name && state.project.name !== "Untitled project"
         ? state.project.name : "";
-      hint.textContent = "The project file (".concat(state.project.suffix || ".ttproj", ") contains all data and the saved timetable. Choose a folder, type a name, then press Save.");
+      hint.textContent = "The project file (".concat(state.project.suffix || ".ttproj",
+        ") contains all data and the saved timetable. Browse to any folder on any drive, type a name, then press Save. ",
+        "Every export (Excel, PDF, CSV, calendar) is written into this same folder.");
       tabs.forEach(function (tab) { tab.parentNode.hidden = false; });
       recent.hidden = true;
       browse.hidden = false;
@@ -1337,7 +1574,7 @@
     $("#projectTabBrowse").setAttribute("aria-pressed", tab === "browse" ? "true" : "false");
     $("#projectRecentPane").hidden = tab !== "recent";
     $("#projectBrowsePane").hidden = tab !== "browse";
-    if (tab === "browse") loadFsList();
+    if (tab === "browse") loadFsList(state.fs.cwd);
     else renderRecentProjects();
   }
 
@@ -1379,22 +1616,85 @@
   }
 
   /* ---- in-app folder browser -------------------------------------------- */
-  function loadFsList() {
+  function loadFsList(path) {
     var host = $("#fsList");
     host.innerHTML = '<p class="fs-empty">Loading&hellip;</p>';
-    api("/api/fs/list?path=" + encodeURIComponent(state.fs.cwd || state.project.home))
+    var wanted = path || state.fs.cwd || "";
+    var url = "/api/fs/list" + (wanted ? "?path=" + encodeURIComponent(wanted) : "");
+    return api(url)
       .then(function (data) {
         state.fs.cwd = data.path;
         state.fs.parent = data.parent;
-        $("#fsPath").textContent = data.path;
-        $("#fsPath").title = data.path;
-        $("#fsUpBtn").disabled = !data.can_up;
+        state.fs.writable = data.writable !== false;
+        state.fs.roots = data.roots || state.fs.roots || [];
+        state.fs.places = data.places || state.fs.places || [];
+        renderFsBreadcrumbs(data);
+        renderFsPlaces();
         renderFsList(data);
+        updateSaveTargetPreview();
+        return data;
       })
       .catch(function (err) {
         host.innerHTML = '<p class="fs-empty">' + escapeHtml(err.message) + "</p>";
+        // Falling back to the home folder keeps the dialog usable when a
+        // remembered path has been deleted or a drive was unplugged.
+        if (wanted && wanted !== state.project.home) {
+          toast("Folder unavailable", err.message + " Showing your home folder instead.", "warning");
+          state.fs.cwd = state.project.home || "";
+          return loadFsList(state.fs.cwd);
+        }
         toast("Folder unavailable", err.message, "warning");
       });
+  }
+
+  /* Clickable path segments: C: › Users › you › Documents  */
+  function renderFsBreadcrumbs(data) {
+    var bar = $("#fsPath");
+    bar.innerHTML = "";
+    var crumbs = data.breadcrumbs || [{ name: data.path, path: data.path }];
+    crumbs.forEach(function (crumb, index) {
+      if (index) bar.appendChild(el("span", "fs-sep", "›"));
+      var button = el("button", "fs-crumb", crumb.name || crumb.path);
+      button.type = "button";
+      button.title = crumb.path;
+      button.addEventListener("click", function () { loadFsList(crumb.path); });
+      bar.appendChild(button);
+    });
+    bar.title = data.path;
+    $("#fsUpBtn").disabled = !data.can_up;
+
+    var flag = $("#fsWritable");
+    if (flag) {
+      var writable = data.writable !== false;
+      flag.textContent = writable ? "" : "Read-only folder";
+      flag.hidden = writable;
+    }
+  }
+
+  /* Drives (C:, D:, USB sticks) and shortcuts (Desktop, Documents…). */
+  function renderFsPlaces() {
+    var host = $("#fsPlaces");
+    if (!host) return;
+    host.innerHTML = "";
+
+    function addGroup(label, items, kind) {
+      if (!items || !items.length) return;
+      host.appendChild(el("div", "fs-places-label", label));
+      items.forEach(function (item) {
+        var button = el("button", "fs-place" + (item.path === state.fs.cwd ? " active" : ""));
+        button.type = "button";
+        button.title = item.path;
+        var ico = el("span", "fs-ico");
+        ico.innerHTML = icon(kind === "drive" ? "drive" : "folder");
+        button.appendChild(ico);
+        button.appendChild(el("span", "fs-place-name", item.name));
+        button.addEventListener("click", function () { loadFsList(item.path); });
+        host.appendChild(button);
+      });
+    }
+
+    addGroup("Quick access", state.fs.places || [], "place");
+    addGroup("This computer", state.fs.roots || [], "drive");
   }
 
   function renderFsList(data) {
@@ -1402,19 +1702,22 @@
     host.innerHTML = "";
     state.fs.files = data.files || [];
     state.fs.dirs = data.dirs || [];
-    var suffix = state.project.suffix || ".ttproj";
 
-    (data.dirs || []).forEach(function (name) {
+    (data.dirs || []).forEach(function (dir) {
       var row = el("div", "fs-row is-dir");
       row.setAttribute("role", "option");
+      row.tabIndex = 0;
       var ico = el("span", "fs-ico"); ico.innerHTML = icon("folder");
       row.appendChild(ico);
-      row.appendChild(el("span", "fs-name", name));
+      row.appendChild(el("span", "fs-name", dir.name));
       row.appendChild(el("span", "fs-meta", "Folder"));
-      row.addEventListener("click", function () {
+      var enter = function () {
         state.fs.selected = null;
-        state.fs.cwd = data.path.replace(/\/+$/, "") + "/" + name;
-        loadFsList();
+        loadFsList(dir.path);
+      };
+      row.addEventListener("click", enter);
+      row.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); enter(); }
       });
       host.appendChild(row);
     });
@@ -1422,27 +1725,76 @@
     (data.files || []).forEach(function (file) {
       var row = el("div", "fs-row");
       row.setAttribute("role", "option");
+      row.tabIndex = 0;
       var ico = el("span", "fs-ico"); ico.innerHTML = icon("file");
       row.appendChild(ico);
       row.appendChild(el("span", "fs-name", file.name));
       row.appendChild(el("span", "fs-meta", formatBytes(file.size) + " · " + formatWhen(file.modified)));
+
+      var select = function () {
+        state.fs.selected = file.path;
+        $$("#fsList .fs-row").forEach(function (other) { other.classList.remove("selected"); });
+        row.classList.add("selected");
+        $("#projectPrimaryBtn").disabled = false;
+        $("#projectNameInput").value = file.name.replace(/\.[^.]+$/, "");
+        updateSaveTargetPreview();
+      };
+      row.addEventListener("click", select);
+      row.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          select();
+          if (state.fs.mode === "open") openProjectPath(file.path);
+        }
+      });
       if (state.fs.mode === "open") {
-        row.addEventListener("click", function () {
-          state.fs.selected = data.path.replace(/\/+$/, "") + "/" + file.name;
-          $$("#fsList .fs-row").forEach(function (other) { other.classList.remove("selected"); });
-          row.classList.add("selected");
-          $("#projectPrimaryBtn").disabled = false;
-          $("#projectNameInput").value = file.name.replace(/\.[^.]+$/, "");
-        });
-        row.addEventListener("dblclick", function () { openProjectPath(state.fs.selected); });
+        row.addEventListener("dblclick", function () { openProjectPath(file.path); });
       }
       host.appendChild(row);
     });
 
+    if (data.truncated) {
+      host.appendChild(el("p", "fs-empty",
+        "This folder has a very large number of items — only the first 5000 are shown."));
+    }
     if (!(data.dirs || []).length && !(data.files || []).length) {
       host.innerHTML = '<p class="fs-empty">This folder is empty' +
         (state.fs.mode === "saveAs" ? " — you can save the project here." : ".") + "</p>";
     }
+  }
+
+  /* Shows the exact file that Save will create, so there are no surprises. */
+  function updateSaveTargetPreview() {
+    var preview = $("#fsSaveTarget");
+    if (!preview) return;
+    if (state.fs.mode !== "saveAs") { preview.hidden = true; return; }
+    preview.hidden = false;
+    var path = plannedProjectPath();
+    preview.textContent = path ? "Will be saved as:  " + path : "";
+    preview.title = path || "";
+
+    var button = $("#projectPrimaryBtn");
+    var blocked = state.fs.writable === false;
+    button.disabled = blocked;
+    button.title = blocked
+      ? "This folder is read-only — choose another one."
+      : "Save the project to " + (path || "the selected folder");
+  }
+
+  function joinPath(folder, name) {
+    var base = String(folder || "").replace(/[\\/]+$/, "");
+    var sep = base.indexOf("\\") !== -1 && base.indexOf("/") === -1 ? "\\" : "/";
+    if (/^[A-Za-z]:$/.test(base)) return base + "\\" + name;   // "C:" -> "C:\"
+    return base + sep + name;
+  }
+
+  function plannedProjectPath() {
+    var folder = state.fs.cwd || state.project.home;
+    if (!folder) return "";
+    var suffix = state.project.suffix || ".ttproj";
+    var name = ($("#projectNameInput").value || "").trim() || "Untitled project";
+    var fileName = name.toLowerCase().slice(-suffix.length) === suffix ? name : name + suffix;
+    return joinPath(folder, fileName);
   }
 
   function adjustProjectDialogForSaveAs() {
@@ -1453,25 +1805,45 @@
   /* ---- create / open / save --------------------------------------------- */
   function createNewProject() {
     var name = $("#projectNameInput").value.trim() || "Untitled project";
+    var sampleToggle = $("#projectSampleData");
+    var wantsSample = !!(sampleToggle && sampleToggle.checked);
+
     confirmAction(
-      "Create a new project?",
-      "This replaces the data currently in the app with the bundled sample data, so you can start fresh. A safety backup of the current data is kept automatically.",
+      wantsSample ? "Create a project with sample data?" : "Create a blank project?",
+      (wantsSample
+        ? "The app will be filled with the bundled sample university so you can explore how everything works."
+        : "You will get a completely empty workspace — no courses, teachers, buildings, rooms, students or " +
+          "scheduled classes — ready for your own institute's data.") +
+      "\n\nEverything currently in the app is replaced. A safety backup of the current data is kept automatically.",
       function () {
-        api("/api/project/new", { method: "POST", body: { name: name } })
-          .then(function () {
+        api("/api/project/new", { method: "POST", body: { name: name, sample: wantsSample } })
+          .then(function (result) {
             closeDialogs();
-            state.project = { name: name, path: null, recent: [], home: state.project.home, suffix: state.project.suffix };
-            return refreshAfterProjectSwitch();
+            state.project = {
+              name: name, path: null, recent: [], home: state.project.home,
+              suffix: state.project.suffix, roots: state.project.roots, places: state.project.places
+            };
+            // A blank project has no rooms, so the previous grid must go too.
+            state.slots = { morning: [], evening: [] };
+            state.gridRooms = [];
+            return refreshAfterProjectSwitch().then(function () { return result; });
           })
-          .then(function () {
+          .then(function (result) {
             loadProjectInfo();
-            toast("New project created", "Start adding your teachers, rooms and courses — then press Save as.", "success", 7000);
+            if (result && result.blank) {
+              toast("Blank project created",
+                "Add your teachers, buildings, rooms and courses (Alt+T / Alt+B / Alt+R / Alt+C), " +
+                "or import them from Excel with Ctrl+I. Then press Save as.", "success", 10000);
+            } else {
+              toast("New project created",
+                "Loaded the sample university. Press Save as to store it as your own project.", "success", 8000);
+            }
             openProjectDialog("saveAs");
             $("#projectNameInput").value = name;
           })
           .catch(function (err) { toast("Could not create the project", err.message, "error"); });
       },
-      "Create project"
+      wantsSample ? "Create with sample data" : "Create blank project"
     );
   }
 
@@ -1515,10 +1887,13 @@
 
   function saveProjectFromDialog() {
     var name = ($("#projectNameInput").value || "").trim() || "Untitled project";
-    var base = state.fs.cwd || state.project.home;
-    var suffix = state.project.suffix || ".ttproj";
-    var fileName = name.toLowerCase().endsWith(suffix) ? name : name + suffix;
-    var path = base.replace(/[\\/]+$/, "") + "/" + fileName;
+    if (state.fs.writable === false) {
+      toast("Read-only folder",
+        "This app cannot write to " + state.fs.cwd + ". Pick another folder or drive.", "error", 8000);
+      return;
+    }
+    var path = plannedProjectPath();
+    var fileName = path.split(/[\\/]/).pop();
     var exists = (state.fs.files || []).some(function (file) {
       return file.name.toLowerCase() === fileName.toLowerCase();
     });
@@ -1558,11 +1933,11 @@
   }
 
   function openProjectFileChooserAt(path) {
-    var folder = path.replace(/[^/\\]+$/, "");
+    var folder = path.replace(/[^/\\]+$/, "").replace(/[\\/]+$/, "");
     var name = path.split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
     state.fs.cwd = folder || state.project.home;
     switchProjectTab("browse");
-    loadFsList();
+    loadFsList(state.fs.cwd);
     $("#projectNameInput").value = name;
     adjustProjectDialogForSaveAs();
   }
@@ -1571,10 +1946,12 @@
     var name = $("#fsNewFolderName").value.trim();
     if (!name) { toast("Folder name required", "", "warning", 2500); return; }
     api("/api/fs/mkdir", { method: "POST", body: { path: state.fs.cwd, name: name } })
-      .then(function () {
+      .then(function (result) {
         $("#fsNewFolderRow").hidden = true;
         $("#fsNewFolderName").value = "";
-        loadFsList();
+        // Step straight into the folder that was just made - that is always
+        // what the user wanted it for.
+        loadFsList(result && result.path ? result.path : state.fs.cwd);
         toast("Folder created", name, "success", 3000);
       })
       .catch(function (err) { toast("Could not create the folder", err.message, "error"); });
@@ -1616,25 +1993,57 @@
   }
 
   /* -------------------------------- exports ------------------------------- */
+  /* Every export goes to the SAME folder the project was saved in, so all of
+     a user's files live together instead of scattering into the browser's
+     Downloads folder.  If no project has been saved yet the file is streamed
+     as a normal download, exactly as before. */
+  function exportFolder() {
+    if (!state.project.path) return null;
+    return state.project.path.replace(/[^\\/]+$/, "").replace(/[\\/]+$/, "") || null;
+  }
+
+  function exportTargetLabel() {
+    var folder = exportFolder();
+    return folder ? folder : "your Downloads folder (save the project to keep exports beside it)";
+  }
+
+  /* One helper for xlsx / csv / pdf / ics: ask the server to write the file
+     into the project folder, and fall back to a browser download when there
+     is no project folder yet. */
+  function runExport(endpoint, body, fallbackName, describe) {
+    var folder = exportFolder();
+    if (folder) {
+      return api(endpoint, { method: "POST", body: Object.assign({}, body, { folder: folder, filename: fallbackName }) })
+        .then(function (result) {
+          toast("Saved to your project folder", result.path, "success", 8000);
+          return result;
+        });
+    }
+    return api(endpoint, { method: "POST", raw: true, body: body })
+      .then(function (blob) {
+        downloadBlob(blob, fallbackName);
+        toast(describe || "Exported", fallbackName + " downloaded.", "success");
+        return { path: fallbackName };
+      });
+  }
+
+  function exportBody(extra) {
+    var body = {
+      assignments: state.placements.map(toAssignment),
+      days: state.days,
+      shift: "all",
+      title: "University Timetable"
+    };
+    Object.keys(extra || {}).forEach(function (key) { body[key] = extra[key]; });
+    return body;
+  }
+
   function exportExcel() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
     toast("Building workbook", "One sheet per day and per semester…", "info", 2500);
-    api("/api/export/xlsx", {
-      method: "POST",
-      raw: true,
-      body: {
-        assignments: state.placements.map(toAssignment),
-        days: state.days,
-        shift: "all",
-        title: "University Timetable"
-      }
-    }).then(function (blob) {
-      downloadBlob(blob, "timetable.xlsx");
-      toast("Excel exported",
-        "timetable.xlsx — Summary, one sheet per day, one sheet per semester, By Teacher.", "success");
-    }).catch(function (err) {
-      toast("Excel export failed", err.message, "error");
-    });
+    runExport("/api/export/xlsx", exportBody({}), "timetable.xlsx",
+      "Excel exported — Summary, one sheet per day, one per semester, By Teacher.")
+      .catch(function (err) { toast("Excel export failed", err.message, "error"); });
   }
 
   function buildPrintable() {
@@ -1785,20 +2194,12 @@
   function publishPdf() {
     var scope = $("#publishScope").value;
     toast("Building PDF", "Laying out the pages…", "info", 2000);
-    api("/api/publish/pdf", { method: "POST", raw: true, body: publishBody({}) })
-      .then(function (blob) {
-        downloadBlob(blob, "timetable-" + scope + ".pdf");
-        toast("PDF ready", "timetable-" + scope + ".pdf downloaded.", "success");
-      })
+    runExport("/api/publish/pdf", publishBody({}), "timetable-" + scope + ".pdf", "PDF ready")
       .catch(function (err) { toast("PDF failed", err.message, "error"); });
   }
 
   function publishIcs() {
-    api("/api/publish/ics", { method: "POST", raw: true, body: publishBody({}) })
-      .then(function (blob) {
-        downloadBlob(blob, "timetable.ics");
-        toast("Calendar ready", "timetable.ics downloaded — open it with any calendar app.", "success");
-      })
+    runExport("/api/publish/ics", publishBody({}), "timetable.ics", "Calendar ready")
       .catch(function (err) { toast("Calendar failed", err.message, "error"); });
   }
 
@@ -1883,23 +2284,10 @@
 
   function exportCsv() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
-    var rows = [["Day", "Shift", "Start", "End", "Room", "Code", "Course", "Section", "Teacher", "Students"]];
-    state.placements.slice().sort(function (a, b) {
-      return a.day - b.day || toMinutes(a.start) - toMinutes(b.start);
-    }).forEach(function (p) {
-      var course = findCourse(p.course_id, p.section) || {};
-      var room = state.rooms.filter(function (r) { return r.id === p.room_id; })[0];
-      rows.push([
-        WEEKDAYS[p.day - 1], titleCase(p.shift || "morning"), p.start, p.end,
-        room ? room.label : p.room_id, course.code || "", course.name || p.course_id, p.section,
-        course.instructor || "", course.num_students || 0
-      ]);
-    });
-    var csv = rows.map(function (row) {
-      return row.map(function (cell) { return '"' + String(cell).replace(/"/g, '""') + '"'; }).join(",");
-    }).join("\r\n");
-    downloadBlob(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" }), "timetable.csv");
-    toast("CSV exported", "timetable.csv downloaded.", "success");
+    // Built server-side so the CSV matches the workbook column-for-column and
+    // can be written straight into the project folder.
+    runExport("/api/export/csv", exportBody({}), "timetable.csv", "CSV exported")
+      .catch(function (err) { toast("CSV export failed", err.message, "error"); });
   }
 
   /* ============================ data management ============================ */
@@ -2458,7 +2846,11 @@
   }
 
   function handleKeydown(event) {
-    if (event.key === "Escape") { closeDialogs(); return; }
+    if (event.key === "Escape") {
+      if (pickedUp) { cancelPickUp(false); return; }
+      closeDialogs();
+      return;
+    }
 
     var target = event.target || {};
     var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || "") || target.isContentEditable;
@@ -2488,19 +2880,38 @@
   }
 
   /* -------------------------------- startup ------------------------------- */
+  /* Dragging a scheduled class back to the sidebar unschedules it.  Same
+     dragenter/dragover pairing as the grid cells, for the same reason. */
   function wireSidebarDropZone() {
     var host = $("#coursesList");
-    host.addEventListener("dragover", function (event) {
+    var depth = 0;
+
+    function allow(event) {
       event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      host.classList.add("dragover");
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    }
+
+    host.addEventListener("dragenter", function (event) {
+      allow(event);
+      depth += 1;
+      if (!dragPayload || dragPayload.type === "placed") host.classList.add("dragover");
     });
-    host.addEventListener("dragleave", function () { host.classList.remove("dragover"); });
+    host.addEventListener("dragover", allow);
+    host.addEventListener("dragleave", function () {
+      depth = Math.max(0, depth - 1);
+      if (!depth) host.classList.remove("dragover");
+    });
     host.addEventListener("drop", function (event) {
       event.preventDefault();
+      depth = 0;
       host.classList.remove("dragover");
       var payload = readDragPayload(event);
-      if (payload.type === "placed") { snapshot(); removePlacement(payload.uid); }
+      clearDragPayload();
+      if (payload.type === "placed") {
+        snapshot();
+        removePlacement(payload.uid);
+        toast("Unscheduled", "The class is back in the course list.", "info", 2500);
+      }
     });
   }
 
@@ -2567,10 +2978,9 @@
     });
     $("#fsUpBtn").addEventListener("click", function () {
       if (!state.fs.parent) return;
-      state.fs.cwd = state.fs.parent;
-      loadFsList();
+      loadFsList(state.fs.parent);
     });
-    $("#fsRefreshBtn").addEventListener("click", loadFsList);
+    $("#fsRefreshBtn").addEventListener("click", function () { loadFsList(state.fs.cwd); });
     $("#fsNewFolderBtn").addEventListener("click", function () {
       state.fs.newFolder = true;
       $("#fsNewFolderRow").hidden = false;
@@ -2588,6 +2998,8 @@
     $("#projectNameInput").addEventListener("keydown", function (event) {
       if (event.key === "Enter" && state.fs.mode === "saveAs") { event.preventDefault(); saveProjectFromDialog(); }
     });
+    // Live preview of the exact file that Save will create.
+    $("#projectNameInput").addEventListener("input", updateSaveTargetPreview);
 
     $$("[data-close-dialog]").forEach(function (button) { button.addEventListener("click", closeDialogs); });
     $$(".dialog").forEach(function (dialog) {
@@ -2602,6 +3014,20 @@
         event.returnValue = "";
       }
     });
+
+    /* A drag that ends anywhere (outside the window, on a dialog, cancelled
+       with Esc) must not leave the app stuck in "dragging" state. */
+    document.addEventListener("dragend", function () { clearDragPayload(); });
+    document.addEventListener("drop", function (event) {
+      // Never let the browser navigate away because a card was dropped on a
+      // non-target - that used to blank the whole app.
+      if (!event.defaultPrevented) event.preventDefault();
+      clearDragPayload();
+    });
+    document.addEventListener("dragover", function (event) {
+      if (dragPayload) event.preventDefault();
+    });
+    window.addEventListener("blur", function () { clearDragPayload(); });
 
     wireSidebarDropZone();
     decorateButtonTooltips();

@@ -24,7 +24,22 @@ from . import __version__
 from .config import Settings, bundle_dir, load_settings
 from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
-from .exporters import build_workbook, openpyxl_available
+from .exporters import build_csv, build_workbook, openpyxl_available
+from .filesystem import (
+    FileSystemError,
+    default_export_dir,
+    ensure_folder,
+    is_writable,
+    list_folder,
+    list_roots,
+    quick_places,
+    require_writable,
+    resolve_dir,
+    resolve_target,
+    sandbox_root,
+    unique_path,
+    validate_name,
+)
 from .importers import build_template, import_workbook
 from .projects import (
     PROJECT_MIMETYPE,
@@ -47,21 +62,25 @@ log = logging.getLogger("timetable")
 
 
 def home_dir() -> Path:
-    """The root the in-app project browser is allowed to show."""
-    return Path.home().resolve()
+    """The folder the project browser opens at by default.
+
+    The browser is **not** limited to this folder any more - it is only the
+    starting point.  Every drive is reachable from there (see
+    :mod:`timetable.filesystem`), which is what a desktop app must allow.
+    """
+    from .filesystem import home_dir as _home
+
+    return _home()
 
 
-def _resolve_home_path(raw: str | Path | None) -> Path:
-    """Validate a path sent by the UI: must live inside the home folder."""
-    if raw is None or not str(raw).strip():
-        raise ValidationError("A folder path is required.")
-    path = Path(str(raw)).expanduser().resolve()
-    root = home_dir()
-    try:
-        path.relative_to(root)
-    except ValueError:
-        raise ValidationError("Only folders inside your home directory are available.") from None
-    return path
+def _resolve_user_dir(raw: str | Path | None) -> Path:
+    """Validate a folder path sent by the UI (any drive, any location)."""
+    return resolve_dir(raw)
+
+
+def _resolve_user_file(raw: str | Path | None) -> Path:
+    """Validate a file path sent by the UI (any drive, any location)."""
+    return resolve_target(raw)
 
 
 def configure_logging(settings: Settings) -> None:
@@ -145,6 +164,10 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.errorhandler(ProjectError)
     def _project_error(exc: ProjectError):
         return jsonify({"error": "project_error", "message": str(exc)}), 400
+
+    @app.errorhandler(FileSystemError)
+    def _filesystem_error(exc: FileSystemError):
+        return jsonify({"error": "filesystem_error", "message": str(exc)}), 400
 
     @app.errorhandler(DatabaseError)
     def _db_down(exc: DatabaseError):
@@ -313,8 +336,16 @@ def create_app(settings: Settings | None = None) -> Flask:
         engine_ = app.extensions.get("engine")
         if engine_ is None:
             raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
-        reset_database(engine_)
-        return jsonify({"ok": True, "message": "Database restored to the bundled sample dataset."})
+        payload = request.get_json(silent=True) or {}
+        blank = bool(payload.get("blank"))
+        reset_database(engine_, seed=not blank)
+        return jsonify(
+            {
+                "ok": True,
+                "blank": blank,
+                "message": "Database emptied." if blank else "Database restored to the bundled sample dataset.",
+            }
+        )
 
     # ---- settings --------------------------------------------------------- #
     @app.get("/api/settings")
@@ -348,6 +379,10 @@ def create_app(settings: Settings | None = None) -> Flask:
                 "saved_at": state.get("saved_at"),
                 "recent": list_recent_projects(data_dir),
                 "home": str(home_dir()),
+                "roots": list_roots(),
+                "places": quick_places(),
+                "sandboxed": sandbox_root() is not None,
+                "export_dir": str(default_export_dir(state.get("path"))),
                 "suffix": PROJECT_SUFFIX,
                 "mimetype": PROJECT_MIMETYPE,
                 "stats": svc.stats() if svc else {},
@@ -361,9 +396,22 @@ def create_app(settings: Settings | None = None) -> Flask:
         engine_ = app.extensions.get("engine")
         if engine_ is None:
             raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
-        result = create_new_project(engine_, data_dir, settings.database_url, name)
+        # A new project is EMPTY by default: no courses, teachers, buildings,
+        # rooms, students or scheduled classes.  Pass {"sample": true} to load
+        # the demo university instead.
+        blank = not bool(payload.get("sample"))
+        result = create_new_project(engine_, data_dir, settings.database_url, name, blank=blank)
         write_project_state(data_dir, name=name, path=None)
+        # The grid preferences belong to the old project - clear them too, or
+        # the empty project would inherit the previous shift/room layout.
+        if blank:
+            service().set_setting("grid", "")
         result["stats"] = service().stats()
+        result["message"] = (
+            "Blank project created - add your teachers, buildings, rooms and courses."
+            if blank
+            else "New project created from the bundled sample dataset."
+        )
         return jsonify(result)
 
     @app.post("/api/project/save")
@@ -376,7 +424,8 @@ def create_app(settings: Settings | None = None) -> Flask:
         engine_ = app.extensions.get("engine")
         if engine_ is None:
             raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
-        target = _resolve_home_path(raw_path)
+        target = _resolve_user_file(raw_path)
+        require_writable(ensure_folder(target.parent))
         result = write_project(engine_, target, name)
         push_recent_project(data_dir, result["name"], result["path"], result.get("modified_at"))
         state = write_project_state(data_dir, name=result["name"], path=result["path"])
@@ -389,7 +438,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         raw_path = str(payload.get("path") or "").strip()
         if not raw_path:
             raise ValidationError("Choose a project file to open.")
-        target = _resolve_home_path(raw_path)
+        target = _resolve_user_file(raw_path)
         if not target.is_file():
             raise ProjectError(f"Project file not found: {target.name}")
         engine_ = app.extensions.get("engine")
@@ -410,7 +459,7 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     @app.get("/api/project/meta")
     def api_project_meta():
-        path = _resolve_home_path(request.args.get("path"))
+        path = _resolve_user_file(request.args.get("path"))
         if not path.is_file():
             raise ProjectError(f"Project file not found: {path.name}")
         return jsonify(_project_meta(path))
@@ -424,68 +473,61 @@ def create_app(settings: Settings | None = None) -> Flask:
         items = remove_recent_project(data_dir, raw_path)
         return jsonify({"ok": True, "recent": items})
 
-    # ---- in-app file browser (sandboxed to the home folder) --------------- #
+    # ---- in-app file browser (whole computer, like a real Save-as) -------- #
     @app.get("/api/fs/list")
     def api_fs_list():
-        folder = _resolve_home_path(request.args.get("path") or home_dir())
-        if not folder.is_dir():
-            raise ValidationError("That folder does not exist.")
-        dirs: list[str] = []
-        files: list[dict[str, Any]] = []
-        try:
-            children = list(folder.iterdir())
-        except OSError as exc:
-            raise ValidationError(f"Could not read that folder: {exc}") from None
-        for child in children:
-            if child.name.startswith(".") or child.name == "System Volume Information":
-                continue
-            try:
-                if child.is_dir() and not child.is_symlink():
-                    dirs.append(child.name)
-                elif child.is_file() and child.suffix.lower() == PROJECT_SUFFIX:
-                    stat = child.stat()
-                    files.append(
-                        {
-                            "name": child.name,
-                            "size": stat.st_size,
-                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
-                        }
-                    )
-            except OSError:
-                continue
-        dirs.sort(key=str.lower)
-        files.sort(key=lambda item: item["name"].lower())
-        root = home_dir()
+        """Contents of a folder anywhere the operating system allows.
+
+        The old build confined this to the home directory, which made it
+        impossible to save a project on another drive.  Now every drive is
+        reachable; ``TTG_SANDBOX_HOME=1`` restores the strict behaviour for
+        shared machines.
+        """
+        raw = request.args.get("path")
+        folder = _resolve_user_dir(raw) if raw and raw.strip() else default_export_dir(
+            read_project_state(data_dir).get("path")
+        )
+        suffix = request.args.get("suffix") or PROJECT_SUFFIX
+        suffixes = [item.strip().lower() for item in suffix.split(",") if item.strip()]
+        payload = list_folder(folder, suffixes or [PROJECT_SUFFIX])
+        payload["roots"] = list_roots()
+        payload["places"] = quick_places()
+        return jsonify(payload)
+
+    @app.get("/api/fs/roots")
+    def api_fs_roots():
+        """Drives / volumes plus the Desktop-Documents-Downloads shortcuts."""
         return jsonify(
             {
-                "path": str(folder),
-                "home": str(root),
-                "parent": str(folder.parent) if folder != root else None,
-                "can_up": folder != root,
-                "dirs": dirs,
-                "files": files,
+                "roots": list_roots(),
+                "places": quick_places(),
+                "home": str(home_dir()),
+                "sandboxed": sandbox_root() is not None,
+                "export_dir": str(default_export_dir(read_project_state(data_dir).get("path"))),
             }
         )
 
     @app.post("/api/fs/mkdir")
     def api_fs_mkdir():
         payload = request.get_json(silent=True) or {}
-        folder = _resolve_home_path(payload.get("path") or home_dir())
-        if not folder.is_dir():
-            raise ValidationError("That folder does not exist.")
-        name = str(payload.get("name") or "").strip()
-        if not name:
-            raise ValidationError("Enter a folder name.")
-        if len(name) > 120 or "/" in name or "\\" in name or name in (".", ".."):
-            raise ValidationError("That folder name is not allowed.")
+        folder = _resolve_user_dir(payload.get("path") or home_dir())
+        name = validate_name(str(payload.get("name") or ""))
+        require_writable(folder)
         target = folder / name
         try:
             target.mkdir()
         except FileExistsError:
-            raise ValidationError(f"A folder named “{name}” already exists.") from None
+            raise FileSystemError(f"A folder named \u201c{name}\u201d already exists here.") from None
         except OSError as exc:
-            raise ValidationError(f"Could not create the folder: {exc}") from None
+            raise FileSystemError(f"Could not create the folder: {exc.strerror or exc}") from None
         return jsonify({"ok": True, "path": str(target), "name": name})
+
+    @app.post("/api/fs/check")
+    def api_fs_check():
+        """Can the app write here?  Used to grey out the Save button early."""
+        payload = request.get_json(silent=True) or {}
+        folder = _resolve_user_dir(payload.get("path") or home_dir())
+        return jsonify({"ok": True, "path": str(folder), "writable": is_writable(folder)})
 
     # ---- catalogue management (teachers / rooms / courses) ---------------- #
     @app.get("/api/instructors")
@@ -596,6 +638,76 @@ def create_app(settings: Settings | None = None) -> Flask:
         )
 
     # ---- exports ---------------------------------------------------------- #
+    def _delivery_folder(payload: dict[str, Any]) -> Path | None:
+        """The folder the user asked exports to be written to, if any.
+
+        When absent the file is streamed to the browser as before, so the
+        download path keeps working everywhere.
+        """
+        raw = payload.get("folder") or payload.get("save_to")
+        if raw is None or not str(raw).strip():
+            return None
+        if str(raw).strip().lower() == "auto":
+            return default_export_dir(read_project_state(data_dir).get("path"))
+        # must_exist=False: the folder is created on demand, so exporting into
+        # a brand-new "Spring 2026" folder works without a separate mkdir.
+        return resolve_dir(raw, must_exist=False)
+
+    def _deliver(data: bytes, payload: dict[str, Any], *, filename: str, mimetype: str):
+        """Write the export next to the project (or stream it as a download).
+
+        Exports go **exactly where the user chose to save the project** - the
+        same folder the .ttproj lives in - rather than the browser's download
+        folder.  Existing files are never silently clobbered: the name gets a
+        ``(2)`` suffix, just like Windows Explorer.
+        """
+        folder = _delivery_folder(payload)
+        if folder is None:
+            return send_file(
+                io.BytesIO(data),
+                mimetype=mimetype,
+                as_attachment=True,
+                download_name=filename,
+                max_age=0,
+            )
+
+        ensure_folder(folder)
+        require_writable(folder)
+        name = validate_name(str(payload.get("filename") or filename))
+        target = folder / name
+        if not bool(payload.get("overwrite")):
+            target = unique_path(target)
+        tmp = target.with_name(target.name + ".part")
+        try:
+            tmp.write_bytes(data)
+            tmp.replace(target)          # atomic: no half-written spreadsheets
+        except OSError as exc:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+            raise FileSystemError(f"Could not write {target}: {exc.strerror or exc}") from None
+        log.info("Export written: %s (%s bytes)", target, len(data))
+        return jsonify(
+            {
+                "ok": True,
+                "saved": True,
+                "path": str(target),
+                "folder": str(folder),
+                "name": target.name,
+                "size": len(data),
+            }
+        )
+
+    def _export_entries(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list[Assignment]]:
+        assignments = _parse_assignments(payload.get("assignments", []))
+        svc = service()
+        entries = svc.describe_assignments(assignments) if assignments else svc.load_timetable()
+        if not entries:
+            raise ValidationError("There is nothing to export yet.")
+        return entries, assignments
+
     @app.post("/api/export/xlsx")
     def api_export_xlsx():
         if not openpyxl_available():
@@ -604,16 +716,8 @@ def create_app(settings: Settings | None = None) -> Flask:
                 501,
             )
         payload = request.get_json(silent=True) or {}
-        assignments = _parse_assignments(payload.get("assignments", []))
+        entries, assignments = _export_entries(payload)
         svc = service()
-
-        if assignments:
-            entries = svc.describe_assignments(assignments)
-        else:
-            entries = svc.load_timetable()
-        if not entries:
-            raise ValidationError("There is nothing to export yet.")
-
         workbook = build_workbook(
             entries,
             svc.list_rooms(),
@@ -623,12 +727,23 @@ def create_app(settings: Settings | None = None) -> Flask:
             title=str(payload.get("title") or "University Timetable"),
             unscheduled=svc.unscheduled(assignments if assignments else None),
         )
-        return send_file(
-            io.BytesIO(workbook),
+        return _deliver(
+            workbook,
+            payload,
+            filename="timetable.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=str(payload.get("filename") or "timetable.xlsx"),
-            max_age=0,
+        )
+
+    @app.post("/api/export/csv")
+    def api_export_csv():
+        """CSV of the timetable - the same delivery rules as the Excel export."""
+        payload = request.get_json(silent=True) or {}
+        entries, _ = _export_entries(payload)
+        return _deliver(
+            build_csv(entries),
+            payload,
+            filename="timetable.csv",
+            mimetype="text/csv; charset=utf-8",
         )
 
     # ---- bulk import (Excel) ---------------------------------------------- #
@@ -728,12 +843,11 @@ def create_app(settings: Settings | None = None) -> Flask:
             slots=payload.get("slots") or None,
             title=str(payload.get("title") or "University Timetable"),
         )
-        return send_file(
-            io.BytesIO(pdf),
+        return _deliver(
+            pdf,
+            payload,
+            filename=f"timetable-{scope}.pdf",
             mimetype="application/pdf",
-            as_attachment=True,
-            download_name=str(payload.get("filename") or f"timetable-{scope}.pdf"),
-            max_age=0,
         )
 
     def _ics_response(entries: list[dict[str, Any]], name: str, weeks: Any, start: Any, download: bool):
@@ -777,6 +891,22 @@ def create_app(settings: Settings | None = None) -> Flask:
         if not entries:
             raise ValidationError("Nothing matches that selection, so there is no calendar to make.")
         name = str(payload.get("title") or payload.get("teacher") or "University Timetable")
+        if _delivery_folder(payload) is not None:
+            from datetime import date
+
+            try:
+                first = date.fromisoformat(str(payload["start"])) if payload.get("start") else date.today()
+            except ValueError:
+                raise ValidationError("start must be a date in YYYY-MM-DD form.") from None
+            text = build_ics(
+                entries, start_date=first, weeks=int(payload.get("weeks") or 16), calendar_name=name
+            )
+            return _deliver(
+                text.encode("utf-8"),
+                payload,
+                filename="timetable.ics",
+                mimetype="text/calendar; charset=utf-8",
+            )
         return _ics_response(entries, name, payload.get("weeks", 16), payload.get("start"), True)
 
     # ---- legacy routes (kept so old bookmarks/scripts keep working) -------- #

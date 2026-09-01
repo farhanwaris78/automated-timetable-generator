@@ -180,11 +180,12 @@ def test_save_then_open_roundtrip_through_api(client, settings: Settings):
     recents = client.get("/api/project").get_json()["recent"]
     assert len(recents) == 1 and recents[0]["name"] == "Semester 2"
 
-    # Now start fresh and verify the project restores everything.
+    # Now start fresh (a blank project) and verify the file restores everything.
     created = client.post("/api/project/new", json={"name": "Fresh"})
     assert created.status_code == 200
-    assert client.get("/api/courses").get_json()  # sample data restored
-    assert not any(c["code"] == "TT-101" for c in client.get("/api/courses").get_json())
+    assert created.get_json()["blank"] is True
+    assert client.get("/api/courses").get_json() == []        # nothing left at all
+    assert client.get("/api/rooms").get_json() == []
 
     opened = client.post("/api/project/open", json={"path": str(target)})
     assert opened.status_code == 200, opened.get_json()
@@ -211,6 +212,92 @@ def test_new_project_keeps_a_backup_and_resets(client, settings: Settings):
     assert not any(c["code"] == "TT-999" for c in client.get("/api/courses").get_json())
     backups = list((settings.log_dir / "backups").glob("timetable-*.db"))
     assert len(backups) == 1
+
+
+def test_new_project_is_completely_blank(client, settings: Settings):
+    """New project = an empty workspace, not somebody else's demo university."""
+    add_course(client, "TT-500", "Will Vanish")
+    save_timetable(client, add_course(client, "TT-501", "Also Vanishes"))
+
+    created = client.post("/api/project/new", json={"name": "Empty"})
+    assert created.status_code == 200
+    payload = created.get_json()
+    assert payload["blank"] is True
+    assert "Blank project" in payload["message"]
+
+    # Every single table must be empty - courses, staff, estate and schedule.
+    stats = payload["stats"]
+    for key in (
+        "courses", "sections", "instructors", "rooms",
+        "students", "enrollments", "scheduled_classes",
+    ):
+        assert stats[key] == 0, f"{key} should be empty in a new project, got {stats[key]}"
+
+    assert client.get("/api/courses").get_json() == []
+    assert client.get("/api/rooms").get_json() == []
+    assert client.get("/api/instructors").get_json() == []
+    assert client.get("/api/buildings").get_json() == []
+    assert client.get("/api/students").get_json() == []
+    assert client.get("/api/timetable").get_json()["entries"] == []
+    # Stale grid preferences from the previous project must not leak through.
+    assert client.get("/api/settings").get_json() == {}
+
+
+def test_new_project_can_still_load_the_sample_data(client):
+    """Opt-in demo data for people who want to explore the app first."""
+    created = client.post("/api/project/new", json={"name": "Demo", "sample": True})
+    assert created.status_code == 200
+    assert created.get_json()["blank"] is False
+    assert created.get_json()["stats"]["courses"] > 0
+    assert client.get("/api/rooms").get_json()
+
+
+def test_blank_project_still_accepts_new_data(client):
+    """The empty database is fully usable straight away."""
+    client.post("/api/project/new", json={"name": "Fresh start"})
+
+    building = client.post("/api/buildings", json={"name": "Main Block"})
+    assert building.status_code == 201
+    room = client.post(
+        "/api/rooms",
+        json={"building_id": building.get_json()["id"], "room_number": "101",
+              "capacity": 40, "room_type": "Classroom"},
+    )
+    assert room.status_code == 201
+    course_id = add_course(client, "NEW-1", "First Course")
+
+    saved = client.post(
+        "/api/timetable",
+        json={"assignments": [{
+            "day": 1, "start_time": "09:00", "end_time": "10:20",
+            "room_id": room.get_json()["id"], "course_id": course_id,
+            "section": "A", "shift": "morning", "kind": "theory",
+        }]},
+    )
+    assert saved.status_code == 200, saved.get_json()
+    assert saved.get_json()["saved"] == 1
+
+
+def test_database_reset_supports_blank_and_sample(client):
+    assert client.post("/api/database/reset", json={"blank": True}).get_json()["blank"] is True
+    assert client.get("/api/courses").get_json() == []
+    assert client.post("/api/database/reset", json={}).get_json()["blank"] is False
+    assert client.get("/api/courses").get_json()
+
+
+def test_blank_project_saves_and_reopens(client, tmp_path: Path):
+    """An empty project round-trips through a .ttproj file without errors."""
+    client.post("/api/project/new", json={"name": "Nothing yet"})
+    target = tmp_path / "blank.ttproj"
+    assert client.post("/api/project/save", json={"name": "Nothing yet", "path": str(target)}).status_code == 200
+
+    client.post("/api/project/new", json={"name": "Other", "sample": True})
+    assert client.get("/api/courses").get_json()
+
+    opened = client.post("/api/project/open", json={"path": str(target)})
+    assert opened.status_code == 200
+    assert client.get("/api/courses").get_json() == []
+    assert client.get("/api/rooms").get_json() == []
 
 
 def test_recent_projects_are_deduplicated_and_removable(client, settings: Settings):
@@ -281,14 +368,17 @@ def test_fs_list_and_mkdir(client, settings: Settings):
     (settings.log_dir / "Projects").mkdir()
     (settings.log_dir / "Projects" / "demo.ttproj").write_text("x", encoding="utf-8")
 
-    data = client.get("/api/fs/list").get_json()
-    assert data["can_up"] is False
-    assert "Projects" in data["dirs"]
+    data = client.get("/api/fs/list?path=" + str(settings.log_dir)).get_json()
+    assert data["path"] == str(settings.log_dir)
+    assert any(item["name"] == "Projects" for item in data["dirs"])
     assert [f["name"] for f in data["files"]] == []
+    assert data["writable"] is True
+    assert data["sandboxed"] is False
 
     deep = client.get("/api/fs/list?path=" + str(settings.log_dir / "Projects")).get_json()
     assert deep["can_up"] is True
     assert deep["files"][0]["name"] == "demo.ttproj"
+    assert deep["parent"] == str(settings.log_dir)
 
     made = client.post("/api/fs/mkdir", json={"path": str(settings.log_dir / "Projects"), "name": "New Folder"})
     assert made.status_code == 200
@@ -296,11 +386,105 @@ def test_fs_list_and_mkdir(client, settings: Settings):
 
     assert client.post("/api/fs/mkdir", json={"path": str(settings.log_dir), "name": "a/b"}).status_code == 400
     assert client.post("/api/fs/mkdir", json={"path": str(settings.log_dir), "name": ".."}).status_code == 400
+    assert client.post("/api/fs/mkdir", json={"path": str(settings.log_dir), "name": "CON"}).status_code == 400
 
 
-def test_fs_list_rejects_paths_outside_home(client):
-    assert client.get("/api/fs/list?path=/etc").status_code == 400
-    assert client.get("/api/fs/list?path=../../../etc").status_code == 400
+def test_browser_can_leave_the_home_folder(client, settings: Settings):
+    r"""The whole point of 2.0.2: users are no longer locked under C:\Users\name."""
+    listing = client.get("/api/fs/list?path=" + str(settings.log_dir))
+    assert listing.status_code == 200
+
+    # Walking up past the home folder is allowed, all the way to the root.
+    current = listing.get_json()
+    hops = 0
+    while current["can_up"] and hops < 40:
+        hops += 1
+        current = client.get("/api/fs/list?path=" + current["parent"]).get_json()
+    assert current["can_up"] is False
+    assert current["parent"] is None
+    assert str(Path(current["path"])) == Path(current["path"]).anchor and hops > 0
+
+    # And an absolute path outside the home folder resolves normally.
+    import tempfile
+
+    outside = Path(tempfile.gettempdir()).resolve()
+    assert client.get("/api/fs/list?path=" + str(outside)).status_code == 200
+
+
+def test_fs_roots_lists_drives_and_places(client):
+    payload = client.get("/api/fs/roots").get_json()
+    assert payload["roots"], "at least one drive/volume must be offered"
+    assert all("path" in item and "name" in item for item in payload["roots"])
+    assert any(place["name"] == "Home" for place in payload["places"])
+    assert payload["sandboxed"] is False
+    assert payload["export_dir"]
+
+
+def test_fs_check_reports_writability(client, settings: Settings):
+    ok = client.post("/api/fs/check", json={"path": str(settings.log_dir)}).get_json()
+    assert ok["writable"] is True
+    # A folder that does not exist is reported clearly rather than as writable.
+    assert client.post("/api/fs/check", json={"path": str(settings.log_dir / "ghost")}).status_code == 400
+
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="POSIX permission bits: chmod does not restrict directories on Windows, and root ignores them",
+)
+def test_fs_check_detects_a_read_only_folder(client, settings: Settings):
+    readonly = settings.log_dir / "locked"
+    readonly.mkdir()
+    readonly.chmod(0o500)
+    try:
+        result = client.post("/api/fs/check", json={"path": str(readonly)}).get_json()
+        assert result["writable"] is False
+    finally:
+        readonly.chmod(0o700)
+
+
+def test_fs_rejects_missing_folders_with_a_clear_message(client, settings: Settings):
+    response = client.get("/api/fs/list?path=" + str(settings.log_dir / "nope"))
+    assert response.status_code == 400
+    assert "no longer exists" in response.get_json()["message"]
+
+
+def test_strict_sandbox_mode_still_available(settings: Settings, monkeypatch, tmp_path: Path):
+    """Shared/kiosk machines can opt back in to the old confinement."""
+    from timetable import filesystem as fs
+
+    monkeypatch.setenv("TTG_SANDBOX_ROOT", str(tmp_path))
+    assert fs.sandbox_root() == tmp_path.resolve()
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    assert fs.resolve_dir(inside) == inside.resolve()
+    with pytest.raises(fs.FileSystemError):
+        fs.resolve_dir("/etc")
+    assert fs.list_folder(tmp_path)["can_up"] is False
+    assert fs.list_folder(tmp_path)["sandboxed"] is True
+
+
+def test_unique_path_never_overwrites(tmp_path: Path):
+    from timetable.filesystem import unique_path
+
+    target = tmp_path / "timetable.xlsx"
+    assert unique_path(target) == target
+    target.write_bytes(b"1")
+    assert unique_path(target).name == "timetable (2).xlsx"
+    (tmp_path / "timetable (2).xlsx").write_bytes(b"2")
+    assert unique_path(target).name == "timetable (3).xlsx"
+
+
+def test_project_can_be_saved_outside_the_home_folder(client, tmp_path: Path):
+    """A project saves to any drive/folder the OS allows."""
+    target = tmp_path / "elsewhere" / "away.ttproj"
+    saved = client.post("/api/project/save", json={"name": "Away", "path": str(target)})
+    assert saved.status_code == 200, saved.get_json()
+    assert Path(saved.get_json()["path"]) == target.resolve()
+    assert target.is_file()  # parent folder was created for the user
+
+    opened = client.post("/api/project/open", json={"path": str(target)})
+    assert opened.status_code == 200
+    assert opened.get_json()["name"] == "Away"
 
 
 # --------------------------------------------------------------------------- #
