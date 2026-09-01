@@ -406,6 +406,84 @@ kbd {
 .shortcut-group dd { margin: 0; font-size: 13px; color: var(--ink-soft); }
 
 /* ------------------------------------------------------------------------ *
+ * v3.0 additions - project bar, project dialog, in-app file browser
+ * ------------------------------------------------------------------------ */
+.project-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 8px 14px; background: linear-gradient(180deg, #fbfcff, #f6f8ff);
+  border-bottom: 1px solid var(--line);
+}
+.project-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.project-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  background: var(--brand); color: #fff;
+}
+.project-titles { display: flex; flex-direction: column; min-width: 0; }
+.project-name {
+  font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px;
+}
+.project-path {
+  font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 380px;
+}
+.project-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.project-actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+.ico { vertical-align: -2px; }
+
+/* project dialog */
+.project-modes { margin-bottom: 12px; }
+.project-pane { margin-bottom: 14px; }
+.project-recent { list-style: none; margin: 0 0 8px; padding: 0; max-height: 260px; overflow: auto; }
+.project-recent li {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 9px; margin-bottom: 6px; background: #fff;
+}
+.project-recent .pr-name { font-weight: 700; font-size: 13.5px; }
+.project-recent .pr-path {
+  font-size: 11.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; flex: 1; min-width: 0;
+}
+.project-recent .pr-date { font-size: 11.5px; color: var(--ink-soft); flex: none; }
+.project-recent .pr-open { flex: none; }
+.project-recent .pr-x {
+  flex: none; border: 0; background: transparent; cursor: pointer; color: var(--ink-soft);
+  font-size: 15px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+}
+.project-recent .pr-x:hover { color: var(--danger); background: #fdf1f1; }
+
+.fs-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.fs-path {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: #f1f3fb; border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px;
+}
+.fs-toolbar .icon-square { flex: none; }
+.fs-toolbar #fsNewFolderBtn { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.fs-new-folder { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+.fs-new-folder input { flex: 1; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13.5px; }
+.fs-list { border: 1px solid var(--line); border-radius: 10px; min-height: 120px; max-height: 300px; overflow: auto; }
+.fs-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--line); font-size: 13.5px;
+}
+.fs-row:last-child { border-bottom: 0; }
+.fs-row:hover { background: #f4f7ff; }
+.fs-row.selected { background: #e6ecff; outline: 2px solid var(--brand); outline-offset: -2px; border-radius: 4px; }
+.fs-row .fs-ico { flex: none; display: inline-flex; color: var(--ink-soft); }
+.fs-row.is-dir .fs-ico { color: var(--brand); }
+.fs-row .fs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fs-row .fs-meta { flex: none; font-size: 11.5px; color: var(--ink-soft); }
+.fs-empty { padding: 22px 14px; text-align: center; }
+
+.project-name-row { border-top: 1px solid var(--line); padding-top: 12px; }
+.project-name-row label { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin-bottom: 5px; }
+.project-name-row input {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px;
+}
+.project-name-row .hint { margin: 6px 0 0; }
+
+/* ------------------------------------------------------------------------ *
  * v2.2 additions - capacity warnings, import, publish, confirm dialog
  * ------------------------------------------------------------------------ */
 .placed.has-warning { box-shadow: 0 0 0 2px var(--warn); }

@@ -158,6 +158,7 @@ class Settings:
     port: int = 0                      # 0 => pick a free port automatically
     debug: bool = False
     open_browser: bool = True
+    native_window: bool = True         # False => open the browser instead
     seed_demo_data: bool = True
     secret_key: str = field(repr=False, default="")
     log_dir: Path = field(default_factory=user_data_dir)
@@ -182,6 +183,7 @@ def load_settings() -> Settings:
         port=_env_int("TTG_PORT", 0),
         debug=_env_bool("TTG_DEBUG", False),
         open_browser=_env_bool("TTG_OPEN_BROWSER", True),
+        native_window=_env_bool("TTG_WINDOW_NATIVE", True),
         seed_demo_data=_env_bool("TTG_SEED_DEMO_DATA", True),
         secret_key=os.getenv("TTG_SECRET_KEY", os.urandom(24).hex()),
         log_dir=user_data_dir(),

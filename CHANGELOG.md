@@ -1,5 +1,62 @@
 # Changelog
 
+## 3.0.0 — standalone desktop app with projects
+
+**Native desktop window (no browser tab)**
+* The app now opens in its **own desktop window** through pywebview: WebView2
+  on Windows, WKWebView on macOS and WebKitGTK on Linux. No address bar, no
+  tabs, no browser chrome — it looks and feels like a normal installed
+  program, and the packaged `.exe`/`.app`/binary no longer opens a console
+  window either.
+* If the webview runtime is missing the app **falls back to the browser**
+  automatically — it never fails to start. `--browser` forces the old
+  behaviour, `--no-browser` runs server-only, `TTG_WINDOW_NATIVE=0` disables
+  the native window via `.env`.
+* Startup crashes on Windows now show a native error dialog instead of a
+  vanishing console window.
+
+**Projects — save, open, new, save as** (`Ctrl+N/O/S`, `Ctrl+Shift+S`)
+* A **project** is one portable `.ttproj` file containing *everything*:
+  teachers, buildings, rooms, courses/sections, students, enrolments, the
+  saved timetable and grid preferences.
+* New project bar in the header: **New**, **Open**, **Save**, **Save as**
+  with a live project name / file path.
+* **Save** (or the in-app Save-as dialog) writes the file atomically (temp +
+  rename — a crash never corrupts it) and automatically stores the grid on
+  screen together with the reference data.
+* **Open** restores the whole project. A safety backup of the current working
+  database is written first, and the most recent 10 backups are kept in the
+  data folder.
+* **New** resets to the bundled sample dataset (with the same automatic
+  backup) so you can start another institute without closing the app.
+* **Recent projects** list, deduplicated, most-recent-first, removable, with
+  modified dates; empty-name saves get a `.ttproj` suffix automatically.
+* The project format is a versioned ZIP (`project.json` + `data.json`,
+  backend-agnostic JSON) — a project saved while pointed at SQL Server opens
+  fine on another PC using the default SQLite.
+
+**In-app file browser — with proper logos**
+* Open / Save-as use the app's own folder browser, not the OS dialog, so it
+  works identically on Windows, macOS, Linux and in the dev browser.
+* The **“Up to previous folder”** and **“New folder”** controls are now
+  clean **icon buttons** (up-arrow and folder-plus logos) instead of plain
+  text — exactly the shortcuts that were being used most.
+* Folders and `.ttproj` files are listed with sizes and dates; browser is
+  sandboxed to your home folder and every path is validated server-side.
+
+**Under the hood**
+* New `timetable/projects.py` module with atomic writes, JSON-safe dump /
+  restore (dates round-trip correctly) and backup pruning.
+* New API: `GET/POST /api/project`, `/api/project/new|save|open`,
+  `GET /api/project/meta`, `DELETE /api/project/recent`, `GET /api/fs/list`,
+  `POST /api/fs/mkdir` — plus a `ProjectError` JSON error handler.
+* Desktop launcher runs waitress on a daemon thread with a clean shutdown and
+  keeps the browser fallback path for headless machines.
+* Test suite grown from 94 to **110 tests** (project round-trips, corrupt /
+  future-format files, backups, recents, fs sandbox, launcher flags).
+
+---
+
 ## 2.0.0 — first public release
 
 A complete rewrite of the original prototype into a zero-configuration,

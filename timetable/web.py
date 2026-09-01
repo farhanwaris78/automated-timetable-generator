@@ -13,7 +13,8 @@ from __future__ import annotations
 import io
 import logging
 import logging.handlers
-import os
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -25,10 +26,42 @@ from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
 from .exporters import build_workbook, openpyxl_available
 from .importers import build_template, import_workbook
+from .projects import (
+    PROJECT_MIMETYPE,
+    PROJECT_SUFFIX,
+    ProjectError,
+    list_recent_projects,
+    new_project as create_new_project,
+    open_project as open_project_file,
+    push_recent_project,
+    read_project,
+    read_project_state,
+    remove_recent_project,
+    write_project,
+    write_project_state,
+)
 from .publishing import build_ics, build_pdf, filter_entries
 from .services import Assignment, TimetableService, ValidationError, WEEKDAYS
 
 log = logging.getLogger("timetable")
+
+
+def home_dir() -> Path:
+    """The root the in-app project browser is allowed to show."""
+    return Path.home().resolve()
+
+
+def _resolve_home_path(raw: str | Path | None) -> Path:
+    """Validate a path sent by the UI: must live inside the home folder."""
+    if raw is None or not str(raw).strip():
+        raise ValidationError("A folder path is required.")
+    path = Path(str(raw)).expanduser().resolve()
+    root = home_dir()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise ValidationError("Only folders inside your home directory are available.") from None
+    return path
 
 
 def configure_logging(settings: Settings) -> None:
@@ -108,6 +141,10 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.errorhandler(ValidationError)
     def _bad_request(exc: ValidationError):
         return jsonify({"error": "invalid_request", "message": str(exc)}), 400
+
+    @app.errorhandler(ProjectError)
+    def _project_error(exc: ProjectError):
+        return jsonify({"error": "project_error", "message": str(exc)}), 400
 
     @app.errorhandler(DatabaseError)
     def _db_down(exc: DatabaseError):
@@ -297,6 +334,158 @@ def create_app(settings: Settings | None = None) -> Flask:
         service().set_setting("grid", json.dumps(payload))
         return jsonify({"ok": True})
 
+    # ---- projects --------------------------------------------------------- #
+    data_dir = settings.log_dir
+
+    @app.get("/api/project")
+    def api_project_info():
+        svc = app.extensions.get("service")
+        state = read_project_state(data_dir)
+        return jsonify(
+            {
+                "name": state.get("name", "Untitled project"),
+                "path": state.get("path"),
+                "saved_at": state.get("saved_at"),
+                "recent": list_recent_projects(data_dir),
+                "home": str(home_dir()),
+                "suffix": PROJECT_SUFFIX,
+                "mimetype": PROJECT_MIMETYPE,
+                "stats": svc.stats() if svc else {},
+            }
+        )
+
+    @app.post("/api/project/new")
+    def api_project_new():
+        payload = request.get_json(silent=True) or {}
+        name = str(payload.get("name") or "Untitled project").strip()[:120] or "Untitled project"
+        engine_ = app.extensions.get("engine")
+        if engine_ is None:
+            raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
+        result = create_new_project(engine_, data_dir, settings.database_url, name)
+        write_project_state(data_dir, name=name, path=None)
+        result["stats"] = service().stats()
+        return jsonify(result)
+
+    @app.post("/api/project/save")
+    def api_project_save():
+        payload = request.get_json(silent=True) or {}
+        name = str(payload.get("name") or "Untitled project").strip()[:120] or "Untitled project"
+        raw_path = str(payload.get("path") or "").strip()
+        if not raw_path:
+            raise ValidationError("Choose a folder and a file name for the project.")
+        engine_ = app.extensions.get("engine")
+        if engine_ is None:
+            raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
+        target = _resolve_home_path(raw_path)
+        result = write_project(engine_, target, name)
+        push_recent_project(data_dir, result["name"], result["path"], result.get("modified_at"))
+        state = write_project_state(data_dir, name=result["name"], path=result["path"])
+        result["saved_at"] = state["saved_at"]
+        return jsonify(result)
+
+    @app.post("/api/project/open")
+    def api_project_open():
+        payload = request.get_json(silent=True) or {}
+        raw_path = str(payload.get("path") or "").strip()
+        if not raw_path:
+            raise ValidationError("Choose a project file to open.")
+        target = _resolve_home_path(raw_path)
+        if not target.is_file():
+            raise ProjectError(f"Project file not found: {target.name}")
+        engine_ = app.extensions.get("engine")
+        if engine_ is None:
+            raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
+        result = open_project_file(engine_, target, data_dir, settings.database_url)
+        push_recent_project(data_dir, result["name"], result["path"], result.get("modified_at"))
+        write_project_state(data_dir, name=result["name"], path=result["path"])
+        result.pop("data", None)
+        result["stats"] = service().stats()
+        return jsonify(result)
+
+    def _project_meta(path: str | Path) -> dict[str, Any]:
+        """Cheap metadata from a .ttproj file (no row data) for the UI."""
+        project = read_project(path)
+        project.pop("data", None)
+        return project
+
+    @app.get("/api/project/meta")
+    def api_project_meta():
+        path = _resolve_home_path(request.args.get("path"))
+        if not path.is_file():
+            raise ProjectError(f"Project file not found: {path.name}")
+        return jsonify(_project_meta(path))
+
+    @app.delete("/api/project/recent")
+    def api_project_remove_recent():
+        payload = request.get_json(silent=True) or {}
+        raw_path = str(payload.get("path") or "").strip()
+        if not raw_path:
+            raise ValidationError("A recent-project path is required.")
+        items = remove_recent_project(data_dir, raw_path)
+        return jsonify({"ok": True, "recent": items})
+
+    # ---- in-app file browser (sandboxed to the home folder) --------------- #
+    @app.get("/api/fs/list")
+    def api_fs_list():
+        folder = _resolve_home_path(request.args.get("path") or home_dir())
+        if not folder.is_dir():
+            raise ValidationError("That folder does not exist.")
+        dirs: list[str] = []
+        files: list[dict[str, Any]] = []
+        try:
+            children = list(folder.iterdir())
+        except OSError as exc:
+            raise ValidationError(f"Could not read that folder: {exc}") from None
+        for child in children:
+            if child.name.startswith(".") or child.name == "System Volume Information":
+                continue
+            try:
+                if child.is_dir() and not child.is_symlink():
+                    dirs.append(child.name)
+                elif child.is_file() and child.suffix.lower() == PROJECT_SUFFIX:
+                    stat = child.stat()
+                    files.append(
+                        {
+                            "name": child.name,
+                            "size": stat.st_size,
+                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                        }
+                    )
+            except OSError:
+                continue
+        dirs.sort(key=str.lower)
+        files.sort(key=lambda item: item["name"].lower())
+        root = home_dir()
+        return jsonify(
+            {
+                "path": str(folder),
+                "home": str(root),
+                "parent": str(folder.parent) if folder != root else None,
+                "can_up": folder != root,
+                "dirs": dirs,
+                "files": files,
+            }
+        )
+
+    @app.post("/api/fs/mkdir")
+    def api_fs_mkdir():
+        payload = request.get_json(silent=True) or {}
+        folder = _resolve_home_path(payload.get("path") or home_dir())
+        if not folder.is_dir():
+            raise ValidationError("That folder does not exist.")
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValidationError("Enter a folder name.")
+        if len(name) > 120 or "/" in name or "\\" in name or name in (".", ".."):
+            raise ValidationError("That folder name is not allowed.")
+        target = folder / name
+        try:
+            target.mkdir()
+        except FileExistsError:
+            raise ValidationError(f"A folder named “{name}” already exists.") from None
+        except OSError as exc:
+            raise ValidationError(f"Could not create the folder: {exc}") from None
+        return jsonify({"ok": True, "path": str(target), "name": name})
 
     # ---- catalogue management (teachers / rooms / courses) ---------------- #
     @app.get("/api/instructors")

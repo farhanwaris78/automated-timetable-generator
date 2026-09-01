@@ -7,12 +7,13 @@
 ### Free, offline timetable software for universities, colleges and schools — Windows, macOS and Linux
 
 **Automatic class scheduling with real-time clash detection, drag-and-drop
-timetable editing, lab and semester support, and Excel / PDF / calendar export.**
+timetable editing, lab and semester support, portable projects, and
+Excel / PDF / calendar export — in its own native desktop window.**
 
 [![Latest release](https://img.shields.io/github/v/release/farhanwaris78/automated-timetable-generator?label=download&style=for-the-badge)](../../releases/latest)
 [![Platforms](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-supported-2b3465?style=for-the-badge)](#-download-timetable-software-for-windows-macos-and-linux)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-green?style=for-the-badge)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-94%20passing-brightgreen?style=for-the-badge)](tests/test_app.py)
+[![Tests](https://img.shields.io/badge/tests-110%20passing-brightgreen?style=for-the-badge)](tests/)
 
 [⬇ Download](#-download-timetable-software-for-windows-macos-and-linux) ·
 [✨ Features](#-features) ·
@@ -70,9 +71,11 @@ Python, no SQL Server, no ODBC driver, no internet connection required.
 | **Ubuntu / Debian** | `timetable-generator_*_amd64.deb` | `sudo apt install ./timetable-generator_*_amd64.deb` |
 | Any Linux | `TimetableGenerator-*-linux-x86_64.tar.gz` | `tar -xzf …` then `./start.sh` |
 
-Launch it → a small console window prints the address → your browser opens on
-the app. That is the whole installation. Everything (database, logs, settings)
-lives in one per-user folder; uninstalling leaves nothing behind.
+Launch it → the app opens in its **own native desktop window** (no browser, no
+address bar) — on Windows it uses WebView2, on macOS WKWebView and on Linux
+WebKitGTK. If a webview runtime is missing it quietly falls back to the
+browser, so it always starts. Everything (database, logs, settings, project
+backups) lives in one per-user folder; uninstalling leaves nothing behind.
 
 > **First run:** the app creates its own SQLite database and seeds a realistic
 > sample university so you can try every feature immediately. Press
@@ -82,6 +85,19 @@ lives in one per-user folder; uninstalling leaves nothing behind.
 ---
 
 ## ✨ Features of this automatic timetable generator
+
+### Projects — one file, everything inside
+* **New** (<kbd>Ctrl+N</kbd>), **Open** (<kbd>Ctrl+O</kbd>), **Save**
+  (<kbd>Ctrl+S</kbd>) and **Save as** (<kbd>Ctrl+Shift+S</kbd>) a **project**:
+  one portable `.ttproj` file that carries the teachers, buildings, rooms,
+  courses, sections, students, the saved timetable and the grid preferences.
+* The in-app folder browser gives you **Up to the previous folder** and
+  **New folder** as proper **icon buttons** (arrow-up and folder-plus logos)
+  and lists projects with size and modified date.
+* Opening or starting a new project keeps an **automatic safety backup** of
+  your current database (last 10 kept); project files are written atomically.
+* A **Recent** list remembers the last ten projects, deduplicated, and lets
+  you remove entries you no longer need.
 
 ### Your data, managed in the app
 No SQL, no seed files. Every entity has a dialog, a keyboard shortcut and a row
@@ -177,15 +193,16 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python run.py                      # opens http://127.0.0.1:<free-port>/
+python run.py                      # opens the app in its own native window
 ```
 
-Useful flags: `--port 5000`, `--no-browser`, `--debug`, `--reset-database`,
+Useful flags: `--port 5000`, `--window` (native window, the default),
+`--browser`, `--no-browser` (server only), `--debug`, `--reset-database`,
 `--database-url …`, `--data-dir …`.
 
 ```bash
 pip install pytest
-python -m pytest -q                # 83 tests
+python -m pytest -q                # 110 tests
 ```
 
 ---
@@ -217,21 +234,23 @@ timetable/
 ├── db.py                   SQLAlchemy schema, engine, migrations, first-run seeding
 ├── services.py             domain logic, clash-detection engine, auto-fill
 ├── catalog.py              CRUD for teachers, buildings, rooms, courses, sections
+├── projects.py             portable .ttproj files, recents, safety backups
 ├── exporters.py            Excel workbook builder (one worksheet per day)
 ├── importers.py            Excel template + bulk import with per-row reporting
 ├── publishing.py           dependency-free PDF writer + iCalendar feed builder
 ├── web.py                  Flask app factory and JSON API
-├── desktop.py              port picking, waitress server, browser launch
+├── desktop.py              port picking, waitress server, native window, browser
 ├── seed_data.json          sample dataset
 ├── templates/index.html
 └── static/                 style.css · app.js · favicon.svg
 packaging/                  build.py · timetable.spec · cx_setup.py · ci/ · icons
-tests/test_app.py           83 tests
+tests/                      110 tests (app + projects)
 docs/                       USER_GUIDE · BUILD · SCHEMA · BUGS_AND_FIXES
 ```
 
 **Stack:** Python 3.10+ · Flask 3 · SQLAlchemy 2 · waitress · SQLite · openpyxl ·
-vanilla ES2017 front-end. No jQuery, no CDN, no runtime JS dependencies.
+pywebview (native window, optional at runtime) · vanilla ES2017 front-end.
+No jQuery, no CDN, no runtime JS dependencies.
 
 ### Keyboard shortcuts
 
@@ -239,9 +258,10 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 
 | Group | Keys |
 |---|---|
+| Project | <kbd>Ctrl+N</kbd> new · <kbd>Ctrl+O</kbd> open · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+Shift+S</kbd> save as |
 | Add data | <kbd>Alt+T</kbd> teacher · <kbd>Alt+R</kbd> room · <kbd>Alt+C</kbd> course · <kbd>Alt+B</kbd> building · <kbd>Alt+S</kbd> section · <kbd>Alt+M</kbd> manage · <kbd>Ctrl+I</kbd> import |
 | Edit | <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo · <kbd>Delete</kbd> remove selected · <kbd>Ctrl+Backspace</kbd> clear grid |
-| Timetable | <kbd>Ctrl+G</kbd> generate · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> load · <kbd>Ctrl+K</kbd> check clashes · <kbd>Ctrl+Shift+A</kbd> auto-fill |
+| Timetable | <kbd>Ctrl+G</kbd> generate · <kbd>Ctrl+Alt+S</kbd> save grid to DB · <kbd>Ctrl+K</kbd> check clashes · <kbd>Ctrl+Shift+A</kbd> auto-fill |
 | Export | <kbd>Ctrl+E</kbd> Excel · <kbd>Ctrl+Shift+P</kbd> publish (PDF/calendar) · <kbd>Alt+V</kbd> CSV · <kbd>Ctrl+P</kbd> print |
 | View | <kbd>Alt+1</kbd>/<kbd>Alt+2</kbd> shift · <kbd>1</kbd>–<kbd>7</kbd> day · <kbd>Ctrl+F</kbd> search · <kbd>Alt+H</kbd> sidebar · <kbd>F1</kbd> help · <kbd>Esc</kbd> close |
 
@@ -250,6 +270,13 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | status + row counts |
+| `GET` | `/api/project` | current project + recent projects + home folder |
+| `POST` | `/api/project/new` | fresh project (automatic safety backup) |
+| `POST` | `/api/project/save` | save the whole database as a `.ttproj` file |
+| `POST` | `/api/project/open` | load a `.ttproj` file (automatic safety backup) |
+| `DELETE` | `/api/project/recent` | remove an entry from the recent list |
+| `GET` | `/api/fs/list` | folders + `.ttproj` files inside the home folder |
+| `POST` | `/api/fs/mkdir` | create a folder in the in-app browser |
 | `GET` | `/api/courses` | catalogue (one row per course-section **and kind**) |
 | `GET` | `/api/course-details/<id>/<section>` | instructor, roster, scheduled slots |
 | `GET` | `/api/rooms` · `/api/students` · `/api/student-enrollments` | reference data |
@@ -287,7 +314,8 @@ executable as `.env` to change any of it.
 | `DB_SERVER` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_DRIVER` | – | Microsoft SQL Server (needs `pip install pyodbc`) |
 | `TTG_DATA_DIR` | per-OS app-data folder | where `timetable.db` and `timetable.log` live |
 | `TTG_HOST` / `TTG_PORT` | `127.0.0.1` / free port | server binding |
-| `TTG_OPEN_BROWSER` | `1` | auto-open the browser |
+| `TTG_OPEN_BROWSER` | `1` | show a window / open the browser; `0` = server only |
+| `TTG_WINDOW_NATIVE` | `1` | own desktop window instead of the browser (`0` = browser) |
 | `TTG_SEED_DEMO_DATA` | `1` | `0` = start with an empty database |
 | `TTG_DEBUG` | `0` | verbose logging |
 
@@ -315,7 +343,7 @@ cell with itself so it never found anything.
 * Student enrolment editor and per-student timetables
 * Lab sessions spanning several consecutive slots in one block
 * Multi-user mode: shared Postgres backend, logins, audit trail
-* Automatic timestamped backups of `timetable.db` with one-click restore
+* One-click restore of the automatic safety backups
 * Signed Windows installers and notarised macOS builds
 
 ---
@@ -338,6 +366,26 @@ no trial period and no paid tier.
 Completely. Everything runs on your own machine: the interface, the scheduling
 engine and the database. There is no cloud service, no CDN and no telemetry, so
 it works on an air-gapped lab PC or an exam-hall laptop.
+</details>
+
+<details>
+<summary><strong>Does it need a browser?</strong></summary>
+
+No. By default the app opens in its **own native desktop window** (WebView2 on
+Windows, WKWebView on macOS, WebKitGTK on Linux). If that runtime is not
+installed it automatically falls back to your default browser, so the app
+always starts. Use <code>--browser</code> or <code>TTG_WINDOW_NATIVE=0</code>
+to force the browser mode.
+</details>
+
+<details>
+<summary><strong>What is a project file?</strong></summary>
+
+A <code>.ttproj</code> file is a self-contained snapshot of the whole app:
+teachers, rooms, courses, students and the saved timetable. Use <kbd>Ctrl+S</kbd>
+to save, <kbd>Ctrl+O</kbd> to open, <kbd>Ctrl+N</kbd> for a fresh project and
+<kbd>Ctrl+Shift+S</kbd> to save under a new name. A safety backup of the
+current database is taken automatically before Open/New.
 </details>
 
 <details>

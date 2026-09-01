@@ -42,10 +42,23 @@ hiddenimports = [
     "openpyxl",
     "openpyxl.cell._writer",     # loaded lazily by openpyxl's writer
     "et_xmlfile",
+    # pywebview native window (imported lazily in timetable.desktop)
+    "webview",
+    "webview.guilib",
+    "webview.platforms.gtk",
+    "webview.platforms.cocoa",
+    "webview.platforms.winforms",
+    "webview.platforms.edgechromium",
+    "webview.platforms.qt",
+    "webview.platforms.android",
+    "proxy_tools",
+    "bottle",
+    "typing_extensions",
 ]
 # SQLAlchemy loads dialects dynamically -> PyInstaller cannot see them.
 hiddenimports += collect_submodules("sqlalchemy.dialects.sqlite")
 hiddenimports += collect_submodules("openpyxl")
+hiddenimports += collect_submodules("webview")
 try:
     import pyodbc  # noqa: F401  (optional MSSQL support)
     hiddenimports += ["pyodbc"] + collect_submodules("sqlalchemy.dialects.mssql")
@@ -93,7 +106,7 @@ exe = EXE(
     strip=False,
     upx=False,                      # UPX trips Windows Defender heuristics
     runtime_tmpdir=None,
-    console=True,                   # keep the log window: users can see errors
+    console=False if IS_WINDOWS else True,  # standalone window, no console
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

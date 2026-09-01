@@ -299,10 +299,15 @@ Priority: optional
 Architecture: {arch}
 Installed-Size: {size_kb}
 Maintainer: {PRETTY_NAME} contributors <noreply@example.com>
+Recommends: python3-gi, gir1.2-webkit2-4.1
 Description: {PRETTY_NAME}
  Clash-free university timetable scheduling with drag & drop,
  automatic room/instructor/student conflict detection and PDF export.
  Ships with an embedded database - no server setup required.
+ .
+ Runs in its own desktop window; the recommended GTK/WebKit packages
+ enable that window on Linux (without them the app falls back to
+ opening in the default browser).
 """,
         encoding="utf-8",
     )
