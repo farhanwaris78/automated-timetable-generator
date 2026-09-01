@@ -31,9 +31,13 @@ IS_WINDOWS = sys.platform.startswith("win")
 build_exe_options = {
     "packages": [
         "timetable", "flask", "jinja2", "sqlalchemy", "waitress", "sqlite3", "dotenv",
-        "openpyxl", "et_xmlfile",
+        "openpyxl", "et_xmlfile", "webview",
     ],
-    "includes": ["sqlalchemy.dialects.sqlite", "openpyxl.cell._writer"],
+    "includes": [
+        "sqlalchemy.dialects.sqlite", "openpyxl.cell._writer",
+        "webview.guilib", "webview.platforms.winforms", "webview.platforms.edgechromium",
+        "proxy_tools", "bottle", "typing_extensions",
+    ],
     "excludes": ["tkinter", "unittest", "test", "pydoc", "numpy", "pandas", "matplotlib", "PIL"],
     "include_files": [
         (str(PKG / "templates"), "templates"),
@@ -69,7 +73,7 @@ executables = [
     Executable(
         script=str(PROJECT_ROOT / "launcher.py"),
         target_name="TimetableGenerator.exe" if IS_WINDOWS else "timetable-generator",
-        base="console" if IS_WINDOWS else None,   # console build => errors stay visible
+        base="Win32GUI" if IS_WINDOWS else None,  # standalone window, no console
         icon=str(icon) if icon.exists() else None,
         shortcut_name="Automated Timetable Generator",
         shortcut_dir="ProgramMenuFolder",

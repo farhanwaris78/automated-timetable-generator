@@ -124,6 +124,54 @@
         </div>
       </form>
 
+      <div class="panel project-bar">
+        <div class="project-identity">
+          <span class="project-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="7" width="18" height="13" rx="2"/>
+              <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <path d="M3 12h18"/>
+            </svg>
+          </span>
+          <div class="project-titles">
+            <strong id="projectName" class="project-name">Untitled project</strong>
+            <span id="projectPath" class="project-path" title="Where this project is saved">Not saved yet</span>
+          </div>
+        </div>
+        <div class="project-actions" role="toolbar" aria-label="Project">
+          <button type="button" class="btn" data-action="newProject">
+            <svg class="ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            New
+          </button>
+          <button type="button" class="btn" data-action="openProject">
+            <svg class="ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"/>
+              <path d="M3 11l1.6 7.2A2 2 0 0 0 6.6 20h10.8a2 2 0 0 0 2-1.6L21 11z"/>
+            </svg>
+            Open
+          </button>
+          <button type="button" class="btn btn-primary" data-action="saveProject">
+            <svg class="ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 3h11l3 3v15H5z"/>
+              <path d="M8 3v5h7V3M8 21v-7h8v7"/>
+            </svg>
+            Save
+          </button>
+          <button type="button" class="btn" data-action="saveProjectAs">
+            <svg class="ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 3h11l3 3v15H5z"/>
+              <path d="M8 3v5h7V3M8 21v-7h8v7M15 6h3"/>
+            </svg>
+            Save as
+          </button>
+        </div>
+      </div>
+
       <div class="panel toolbar">
         <div class="toolbar-group">
           <button type="button" class="btn icon-square" data-action="undo" id="undoBtn" disabled
@@ -132,8 +180,8 @@
             title="Redo (Ctrl+Y)">↷</button>
         </div>
         <div class="toolbar-group">
-          <button type="button" class="btn btn-primary" data-action="save">Save to database</button>
-          <button type="button" class="btn" data-action="load">Load saved</button>
+          <button type="button" class="btn" data-action="save" title="Save the grid on screen to the database (Ctrl+Alt+S)">Save to DB</button>
+          <button type="button" class="btn" data-action="load" title="Load the timetable saved in the database">Load saved</button>
           <button type="button" class="btn" data-action="validate">Check all clashes</button>
           <button type="button" class="btn" data-action="autofill">Auto-fill remaining</button>
         </div>
@@ -442,6 +490,79 @@
           is running.</p>
         <code id="publishLink" class="publish-link"></code>
       </div>
+    </div>
+  </div>
+
+  <!-- projects: new / open / save as -->
+  <div id="projectDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="projectDialogTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="projectDialogTitle">Open project</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <div class="segmented project-modes" role="group" aria-label="Project view">
+          <button type="button" class="seg" id="projectTabRecent" data-project-tab="recent" aria-pressed="true">Recent</button>
+          <button type="button" class="seg" id="projectTabBrowse" data-project-tab="browse" aria-pressed="false">
+            <svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"/>
+              <path d="M3 11l1.6 7.2A2 2 0 0 0 6.6 20h10.8a2 2 0 0 0 2-1.6L21 11z"/>
+            </svg>
+            Browse folders
+          </button>
+        </div>
+
+        <div id="projectRecentPane" class="project-pane">
+          <ul id="projectRecentList" class="project-recent"></ul>
+          <p class="muted" id="projectRecentEmpty">No recent projects yet — use <em>Browse folders</em> to find one.</p>
+        </div>
+
+        <div id="projectBrowsePane" class="project-pane" hidden>
+          <div class="fs-toolbar">
+            <button type="button" id="fsUpBtn" class="btn icon-square" title="Up to the previous folder">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+            <code id="fsPath" class="fs-path" title="Current folder"></code>
+            <span class="grow"></span>
+            <button type="button" id="fsRefreshBtn" class="btn icon-square" title="Refresh this folder">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 12a8 8 0 1 1-2.34-5.66L20 8"/>
+                <path d="M20 3v5h-5"/>
+              </svg>
+            </button>
+            <button type="button" id="fsNewFolderBtn" class="btn" title="Create a new folder in this location">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <path d="M12 11v6M9 14h6"/>
+              </svg>
+              New folder
+            </button>
+          </div>
+          <div id="fsNewFolderRow" class="fs-new-folder" hidden>
+            <input type="text" id="fsNewFolderName" maxlength="120" placeholder="Folder name" autocomplete="off">
+            <button type="button" class="btn btn-primary" id="fsNewFolderCreate">Create folder</button>
+            <button type="button" class="btn" id="fsNewFolderCancel">Cancel</button>
+          </div>
+          <div id="fsList" class="fs-list" role="listbox" aria-label="Folders and project files">
+            <p class="muted">Loading&hellip;</p>
+          </div>
+        </div>
+
+        <div class="project-name-row">
+          <label for="projectNameInput">Project name</label>
+          <input type="text" id="projectNameInput" maxlength="120" autocomplete="off"
+            placeholder="e.g. Spring 2026 timetable">
+          <p class="hint" id="projectHint"></p>
+        </div>
+      </div>
+      <footer class="form-actions">
+        <button type="button" class="btn" data-close-dialog>Cancel</button>
+        <button type="button" class="btn btn-primary" id="projectPrimaryBtn"></button>
+      </footer>
     </div>
   </div>
 

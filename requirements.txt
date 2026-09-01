@@ -11,6 +11,7 @@ SQLAlchemy==2.0.39
 waitress==3.0.2
 openpyxl==3.1.5
 python-dotenv==1.0.1
+pywebview==6.2.1   # native desktop window (falls back to the browser if absent)
 
 # Optional: only needed when you point the app at Microsoft SQL Server.
 # Install it manually with `pip install pyodbc==5.2.0` if you use MSSQL.

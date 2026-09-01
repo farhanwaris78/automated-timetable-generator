@@ -13,8 +13,17 @@
 Nothing else is required — no Python, no SQL Server, no ODBC driver, no
 internet connection.
 
-A console window appears with the address the app is serving on, and your
-default browser opens automatically. **Closing that window stops the app.**
+The app opens in its **own native window** (no browser, no address bar). If
+your machine happens to be missing the webview runtime the app quietly opens
+your default browser instead — <code>--browser</code> forces that. Closing the
+window stops the app.
+
+**Projects** in the bar above the toolbar: **New** (<kbd>Ctrl+N</kbd>) starts
+a fresh dataset, **Open** (<kbd>Ctrl+O</kbd>) loads a `.ttproj` file, **Save**
+(<kbd>Ctrl+S</kbd>) stores everything in the project file and **Save as**
+(<kbd>Ctrl+Shift+S</kbd>) picks a new folder/name in the built-in browser —
+which has *Up* and *New folder* icon buttons. A safety backup is made before
+Open/New.
 
 ---
 
@@ -194,6 +203,11 @@ saved timetable, optionally limited to a single teacher, section or room.
 
 ## Step by step
 
+0. **Create (or open) a project** — <kbd>Ctrl+N</kbd> starts from the sample
+   data, <kbd>Ctrl+O</kbd> opens an existing `.ttproj`, and
+   <kbd>Ctrl+Shift+S</kbd> saves it anywhere on disk (the built-in browser has
+   *Up* and *New folder* as icon buttons). Use <kbd>Ctrl+S</kbd> whenever you
+   want to save; it stores the grid on screen together with all your data.
 1. **Set the working week** — days per week, the start/end of the teaching day,
    class length and the break between classes. Optionally restrict the grid to
    one building and cap how many rooms are shown.
@@ -324,7 +338,9 @@ TimetableGenerator --help
 
   --host HOST            interface to bind (default 127.0.0.1)
   --port PORT            fixed port (default: first free port)
-  --no-browser           do not open a browser
+  --window               open the app in its own native window (default)
+  --browser              force the browser mode instead
+  --no-browser           start the server only; open nothing
   --debug                verbose logs + Flask debugger
   --database-url URL     any SQLAlchemy URL (overrides .env)
   --data-dir PATH        keep the database and logs somewhere else

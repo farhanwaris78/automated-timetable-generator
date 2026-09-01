@@ -14,6 +14,11 @@
   /* One registry drives the handler, the button tooltips AND the help dialog,
      so what the user reads is always what the app actually does.            */
   var SHORTCUTS = [
+    { group: "Project", combo: "Ctrl+N", action: "newProject", label: "Start a new project" },
+    { group: "Project", combo: "Ctrl+O", action: "openProject", label: "Open a project file…" },
+    { group: "Project", combo: "Ctrl+S", action: "saveProject", label: "Save the project" },
+    { group: "Project", combo: "Ctrl+Shift+S", action: "saveProjectAs", label: "Save the project as…" },
+
     { group: "Add data", combo: "Alt+T", action: "addTeacher", label: "Add teacher" },
     { group: "Add data", combo: "Alt+R", action: "addRoom", label: "Add classroom" },
     { group: "Add data", combo: "Alt+C", action: "addCourse", label: "Add course (with code)" },
@@ -29,8 +34,7 @@
     { group: "Edit", combo: "Ctrl+Backspace", action: "clearGrid", label: "Clear the whole grid" },
 
     { group: "Timetable", combo: "Ctrl+G", action: "generate", label: "Generate the grid" },
-    { group: "Timetable", combo: "Ctrl+S", action: "save", label: "Save to database" },
-    { group: "Timetable", combo: "Ctrl+O", action: "load", label: "Load the saved timetable" },
+    { group: "Timetable", combo: "Ctrl+Alt+S", action: "save", label: "Save the grid on screen to the database" },
     { group: "Timetable", combo: "Ctrl+K", action: "validate", label: "Check every clash" },
     { group: "Timetable", combo: "Ctrl+Shift+A", action: "autofill", label: "Auto-fill the remaining sections" },
 
@@ -76,7 +80,9 @@
     dirty: false,
     history: [],
     future: [],
-    manageTab: "teachers"
+    manageTab: "teachers",
+    project: { name: "Untitled project", path: null, savedAt: null, recent: [], home: "", suffix: ".ttproj" },
+    fs: { cwd: "", mode: "open", selected: null, newFolder: false }
   };
 
   var uidSeq = 1;
@@ -126,6 +132,34 @@
   }
 
   function titleCase(value) { return String(value || "").charAt(0).toUpperCase() + String(value || "").slice(1); }
+
+  /* Inline SVG logos used by the project bar and the file browser.  The
+     "Up one level" and "New folder" buttons are icon-only - icons say more
+     than words and save space in the toolbar. */
+  var ICONS = {
+    folder: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    file: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>',
+    up: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+    open: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"/><path d="M3 11l1.6 7.2A2 2 0 0 0 6.6 20h10.8a2 2 0 0 0 2-1.6L21 11z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>'
+  };
+
+  function icon(name) { return ICONS[name] || ""; }
+
+  function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1048576).toFixed(1) + " MB";
+  }
+
+  function formatWhen(iso) {
+    if (!iso) return "";
+    var when = new Date(iso);
+    if (isNaN(when.getTime())) return "";
+    return when.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
 
   /* ------------------------------- network -------------------------------- */
   function api(path, options) {
@@ -1131,12 +1165,12 @@
       .then(function () { button.disabled = false; });
   }
 
-  function loadFromDatabase() {
-    api("/api/timetable").then(function (data) {
+  function restoreFromDatabase(silent) {
+    return api("/api/timetable").then(function (data) {
       var entries = data.entries || [];
       if (!entries.length) {
-        toast("Nothing saved", "There is no timetable in the database yet.", "info");
-        return;
+        if (!silent) toast("Nothing saved", "There is no timetable in the database yet.", "info");
+        return 0;
       }
       snapshot();
 
@@ -1174,9 +1208,14 @@
       });
       state.dirty = false;
       renderAll();
-      toast("Loaded", state.placements.length + " class(es) restored from the database.", "success");
+      if (!silent) toast("Loaded", state.placements.length + " class(es) restored from the database.", "success");
       revalidateAll({ silent: true });
-    }).catch(function (err) { toast("Load failed", err.message, "error"); });
+      return entries.length;
+    });
+  }
+
+  function loadFromDatabase() {
+    restoreFromDatabase(false).catch(function (err) { toast("Load failed", err.message, "error"); });
   }
 
   function resetSavedTimetable() {
@@ -1190,6 +1229,355 @@
       },
       "Delete saved timetable"
     );
+  }
+
+  /* ------------------------------ projects ------------------------------- */
+  /* A project is one .ttproj file that carries the whole database: teachers,
+     rooms, courses, students and the saved timetable.  Ctrl+N / Ctrl+O /
+     Ctrl+S / Ctrl+Shift+S map on to New / Open / Save / Save as.          */
+
+  function loadProjectInfo() {
+    return api("/api/project").then(function (info) {
+      state.project = info || state.project;
+      setProjectLabel();
+    });
+  }
+
+  function setProjectLabel() {
+    var name = state.project.name || "Untitled project";
+    var path = state.project.path || null;
+    $("#projectName").textContent = name;
+    var pathEl = $("#projectPath");
+    pathEl.textContent = path ? path : "Not saved yet — press Save as to keep a project file";
+    pathEl.title = path || "Use Save as (Ctrl+Shift+S) to store the project on disk";
+    document.title = name + " — Automated Timetable Generator";
+  }
+
+  function resetEditorAfterProjectSwitch() {
+    /* The database changed: forget the previous session's undo history and
+       screen state before pulling the new project's data back in. */
+    state.placements = [];
+    state.history = [];
+    state.future = [];
+    state.conflicts = {};
+    state.selectedUid = null;
+    state.dirty = false;
+    renderTabs();
+    renderGrid();
+    renderCourses();
+    updateCounters();
+  }
+
+  function refreshAfterProjectSwitch() {
+    resetEditorAfterProjectSwitch();
+    return refreshCatalogue()
+      .then(function () {
+        return api("/api/settings").catch(function () { return {}; });
+      })
+      .then(function (config) {
+        applyConfig(config);
+        generateGrid({ silent: true });
+        return restoreFromDatabase(true);
+      });
+  }
+
+  /* ---- dialog plumbing -------------------------------------------------- */
+  function openProjectDialog(mode) {
+    state.fs.mode = mode;
+    state.fs.selected = null;
+    state.fs.newFolder = false;
+    $("#fsNewFolderRow").hidden = true;
+
+    var title = $("#projectDialogTitle");
+    var primary = $("#projectPrimaryBtn");
+    var tabs = $$("#projectDialog .project-modes");
+    var browse = $("#projectBrowsePane");
+    var recent = $("#projectRecentPane");
+    var nameRow = $(".project-name-row");
+    var hint = $("#projectHint");
+
+    if (mode === "new") {
+      title.textContent = "New project";
+      primary.textContent = "Create project";
+      $("#projectNameInput").value = state.project.path ? state.project.name : "";
+      tabs.forEach(function (tab) { tab.parentNode.hidden = true; });
+      browse.hidden = true;
+      recent.hidden = true;
+      nameRow.hidden = false;
+      hint.textContent = "A new project starts from the sample data. The current data is backed up automatically; save it as a file afterwards with Save as.";
+    } else if (mode === "saveAs") {
+      title.textContent = "Save project as";
+      primary.textContent = "Save project in this folder";
+      $("#projectNameInput").value = state.project.name && state.project.name !== "Untitled project"
+        ? state.project.name : "";
+      hint.textContent = "The project file (".concat(state.project.suffix || ".ttproj", ") contains all data and the saved timetable. Choose a folder, type a name, then press Save.");
+      tabs.forEach(function (tab) { tab.parentNode.hidden = false; });
+      recent.hidden = true;
+      browse.hidden = false;
+      nameRow.hidden = false;
+      switchProjectTab("browse");
+    } else {
+      title.textContent = "Open project";
+      primary.textContent = "Open selected project";
+      $("#projectNameInput").value = "";
+      hint.textContent = "Choose a recent project or browse to a .ttproj file. Opening replaces the current data (a backup is kept automatically).";
+      tabs.forEach(function (tab) { tab.parentNode.hidden = false; });
+      browse.hidden = false;
+      recent.hidden = false;
+      nameRow.hidden = true;
+      primary.disabled = true;
+      switchProjectTab("recent");
+      renderRecentProjects();
+    }
+    openDialog("#projectDialog");
+  }
+
+  function switchProjectTab(tab) {
+    $("#projectTabRecent").setAttribute("aria-pressed", tab === "recent" ? "true" : "false");
+    $("#projectTabBrowse").setAttribute("aria-pressed", tab === "browse" ? "true" : "false");
+    $("#projectRecentPane").hidden = tab !== "recent";
+    $("#projectBrowsePane").hidden = tab !== "browse";
+    if (tab === "browse") loadFsList();
+    else renderRecentProjects();
+  }
+
+  /* ---- recent projects -------------------------------------------------- */
+  function renderRecentProjects() {
+    var list = $("#projectRecentList");
+    var empty = $("#projectRecentEmpty");
+    list.innerHTML = "";
+    var recent = state.project.recent || [];
+    empty.hidden = recent.length > 0;
+    recent.forEach(function (item) {
+      var li = el("li");
+      var ico = el("span", "fs-ico is-dir");
+      ico.innerHTML = icon("file");
+      var name = el("span", "pr-name", item.name);
+      var path = el("span", "pr-path", item.path);
+      path.title = item.path;
+      var date = el("span", "pr-date", formatWhen(item.modified));
+      var open = el("button", "btn btn-tiny pr-open", state.fs.mode === "open" ? "Open" : "Use");
+      open.title = item.path;
+      open.addEventListener("click", function () {
+        if (state.fs.mode === "open") openProjectPath(item.path);
+        else { openProjectFileChooserAt(item.path); }
+      });
+      var x = el("button", "pr-x", "×");
+      x.title = "Remove from recent";
+      x.setAttribute("aria-label", "Remove " + item.name + " from recent projects");
+      x.addEventListener("click", function (event) {
+        event.stopPropagation();
+        api("/api/project/recent", { method: "DELETE", body: { path: item.path } })
+          .then(function () { return loadProjectInfo(); })
+          .then(function () { renderRecentProjects(); })
+          .catch(function (err) { toast("Could not update recents", err.message, "error"); });
+      });
+      li.appendChild(ico); li.appendChild(name); li.appendChild(path);
+      li.appendChild(date); li.appendChild(open); li.appendChild(x);
+      list.appendChild(li);
+    });
+  }
+
+  /* ---- in-app folder browser -------------------------------------------- */
+  function loadFsList() {
+    var host = $("#fsList");
+    host.innerHTML = '<p class="fs-empty">Loading&hellip;</p>';
+    api("/api/fs/list?path=" + encodeURIComponent(state.fs.cwd || state.project.home))
+      .then(function (data) {
+        state.fs.cwd = data.path;
+        state.fs.parent = data.parent;
+        $("#fsPath").textContent = data.path;
+        $("#fsPath").title = data.path;
+        $("#fsUpBtn").disabled = !data.can_up;
+        renderFsList(data);
+      })
+      .catch(function (err) {
+        host.innerHTML = '<p class="fs-empty">' + escapeHtml(err.message) + "</p>";
+        toast("Folder unavailable", err.message, "warning");
+      });
+  }
+
+  function renderFsList(data) {
+    var host = $("#fsList");
+    host.innerHTML = "";
+    state.fs.files = data.files || [];
+    state.fs.dirs = data.dirs || [];
+    var suffix = state.project.suffix || ".ttproj";
+
+    (data.dirs || []).forEach(function (name) {
+      var row = el("div", "fs-row is-dir");
+      row.setAttribute("role", "option");
+      var ico = el("span", "fs-ico"); ico.innerHTML = icon("folder");
+      row.appendChild(ico);
+      row.appendChild(el("span", "fs-name", name));
+      row.appendChild(el("span", "fs-meta", "Folder"));
+      row.addEventListener("click", function () {
+        state.fs.selected = null;
+        state.fs.cwd = data.path.replace(/\/+$/, "") + "/" + name;
+        loadFsList();
+      });
+      host.appendChild(row);
+    });
+
+    (data.files || []).forEach(function (file) {
+      var row = el("div", "fs-row");
+      row.setAttribute("role", "option");
+      var ico = el("span", "fs-ico"); ico.innerHTML = icon("file");
+      row.appendChild(ico);
+      row.appendChild(el("span", "fs-name", file.name));
+      row.appendChild(el("span", "fs-meta", formatBytes(file.size) + " · " + formatWhen(file.modified)));
+      if (state.fs.mode === "open") {
+        row.addEventListener("click", function () {
+          state.fs.selected = data.path.replace(/\/+$/, "") + "/" + file.name;
+          $$("#fsList .fs-row").forEach(function (other) { other.classList.remove("selected"); });
+          row.classList.add("selected");
+          $("#projectPrimaryBtn").disabled = false;
+          $("#projectNameInput").value = file.name.replace(/\.[^.]+$/, "");
+        });
+        row.addEventListener("dblclick", function () { openProjectPath(state.fs.selected); });
+      }
+      host.appendChild(row);
+    });
+
+    if (!(data.dirs || []).length && !(data.files || []).length) {
+      host.innerHTML = '<p class="fs-empty">This folder is empty' +
+        (state.fs.mode === "saveAs" ? " — you can save the project here." : ".") + "</p>";
+    }
+  }
+
+  function adjustProjectDialogForSaveAs() {
+    if (state.fs.mode !== "saveAs") return;
+    $("#projectPrimaryBtn").disabled = false;
+  }
+
+  /* ---- create / open / save --------------------------------------------- */
+  function createNewProject() {
+    var name = $("#projectNameInput").value.trim() || "Untitled project";
+    confirmAction(
+      "Create a new project?",
+      "This replaces the data currently in the app with the bundled sample data, so you can start fresh. A safety backup of the current data is kept automatically.",
+      function () {
+        api("/api/project/new", { method: "POST", body: { name: name } })
+          .then(function () {
+            closeDialogs();
+            state.project = { name: name, path: null, recent: [], home: state.project.home, suffix: state.project.suffix };
+            return refreshAfterProjectSwitch();
+          })
+          .then(function () {
+            loadProjectInfo();
+            toast("New project created", "Start adding your teachers, rooms and courses — then press Save as.", "success", 7000);
+            openProjectDialog("saveAs");
+            $("#projectNameInput").value = name;
+          })
+          .catch(function (err) { toast("Could not create the project", err.message, "error"); });
+      },
+      "Create project"
+    );
+  }
+
+  function commitGridAndSaveProject(target) {
+    var button = $("#projectPrimaryBtn");
+    if (button) button.disabled = true;
+    api("/api/timetable", { method: "POST", body: { assignments: state.placements.map(toAssignment) } })
+      .then(function () {
+        return api("/api/project/save", { method: "POST", body: target });
+      })
+      .then(function (result) {
+        state.project.name = result.name;
+        state.project.path = result.path;
+        state.project.savedAt = result.saved_at;
+        state.dirty = false;
+        return loadProjectInfo();
+      })
+      .then(function () {
+        if (button) button.disabled = false;
+        closeDialogs();
+        toast("Project saved", state.project.path, "success", 6000);
+      })
+      .catch(function (err) {
+        if (button) button.disabled = false;
+        var payload = err.payload || {};
+        if (payload.conflicts && payload.conflicts.length) {
+          toast("Not saved", "Fix the " + payload.conflicts.length + " clashing class(es) first (they are blocked by Schedule/DB rules).", "error", 9000);
+        } else {
+          toast("Save failed", err.message, "error", 9000);
+        }
+      });
+  }
+
+  function saveProjectAction() {
+    if (state.project.path) {
+      commitGridAndSaveProject({ name: state.project.name, path: state.project.path });
+    } else {
+      openProjectDialog("saveAs");
+    }
+  }
+
+  function saveProjectFromDialog() {
+    var name = ($("#projectNameInput").value || "").trim() || "Untitled project";
+    var base = state.fs.cwd || state.project.home;
+    var suffix = state.project.suffix || ".ttproj";
+    var fileName = name.toLowerCase().endsWith(suffix) ? name : name + suffix;
+    var path = base.replace(/[\\/]+$/, "") + "/" + fileName;
+    var exists = (state.fs.files || []).some(function (file) {
+      return file.name.toLowerCase() === fileName.toLowerCase();
+    });
+    if (exists) {
+      confirmAction(
+        "Overwrite the project file?",
+        fileName + " already exists in this folder and will be replaced.",
+        function () { commitGridAndSaveProject({ name: name, path: path }); },
+        "Overwrite"
+      );
+    } else {
+      commitGridAndSaveProject({ name: name, path: path });
+    }
+  }
+
+  function openProjectPath(path) {
+    confirmAction(
+      "Open project?",
+      "Opening this project replaces everything currently in the app (teachers, rooms, courses, timetable) with the file:\n" + path + "\n\nA backup of the current data is kept automatically.",
+      function () {
+        api("/api/project/open", { method: "POST", body: { path: path } })
+          .then(function (result) {
+            state.project.name = result.name;
+            state.project.path = result.path;
+            state.project.savedAt = result.modified_at;
+            closeDialogs();
+            return refreshAfterProjectSwitch();
+          })
+          .then(function () {
+            loadProjectInfo();
+            toast("Project opened", state.project.name + " — " + state.project.path, "success", 7000);
+          })
+          .catch(function (err) { toast("Could not open the project", err.message, "error", 9000); });
+      },
+      "Open project"
+    );
+  }
+
+  function openProjectFileChooserAt(path) {
+    var folder = path.replace(/[^/\\]+$/, "");
+    var name = path.split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+    state.fs.cwd = folder || state.project.home;
+    switchProjectTab("browse");
+    loadFsList();
+    $("#projectNameInput").value = name;
+    adjustProjectDialogForSaveAs();
+  }
+
+  function createFolderInBrowser() {
+    var name = $("#fsNewFolderName").value.trim();
+    if (!name) { toast("Folder name required", "", "warning", 2500); return; }
+    api("/api/fs/mkdir", { method: "POST", body: { path: state.fs.cwd, name: name } })
+      .then(function () {
+        $("#fsNewFolderRow").hidden = true;
+        $("#fsNewFolderName").value = "";
+        loadFsList();
+        toast("Folder created", name, "success", 3000);
+      })
+      .catch(function (err) { toast("Could not create the folder", err.message, "error"); });
   }
 
   function autofill() {
@@ -2025,6 +2413,10 @@
     generate: function () { generateGrid({}); },
     save: saveToDatabase,
     load: loadFromDatabase,
+    newProject: function () { openProjectDialog("new"); },
+    openProject: function () { openProjectDialog("open"); },
+    saveProject: saveProjectAction,
+    saveProjectAs: function () { openProjectDialog("saveAs"); },
     validate: function () { revalidateAll({}); },
     autofill: autofill,
     exportExcel: exportExcel,
@@ -2163,6 +2555,40 @@
       else openCourseDialog(null);
     });
 
+    // project dialog
+    $$("#projectDialog .project-modes .seg").forEach(function (tab) {
+      tab.addEventListener("click", function () { switchProjectTab(tab.dataset.projectTab); });
+    });
+    $("#projectPrimaryBtn").addEventListener("click", function () {
+      if (state.fs.mode === "new") createNewProject();
+      else if (state.fs.mode === "saveAs") saveProjectFromDialog();
+      else if (state.fs.selected) openProjectPath(state.fs.selected);
+      else toast("Choose a project file", "Select one of the .ttproj files listed above.", "info");
+    });
+    $("#fsUpBtn").addEventListener("click", function () {
+      if (!state.fs.parent) return;
+      state.fs.cwd = state.fs.parent;
+      loadFsList();
+    });
+    $("#fsRefreshBtn").addEventListener("click", loadFsList);
+    $("#fsNewFolderBtn").addEventListener("click", function () {
+      state.fs.newFolder = true;
+      $("#fsNewFolderRow").hidden = false;
+      $("#fsNewFolderName").focus();
+    });
+    $("#fsNewFolderCancel").addEventListener("click", function () {
+      state.fs.newFolder = false;
+      $("#fsNewFolderRow").hidden = true;
+      $("#fsNewFolderName").value = "";
+    });
+    $("#fsNewFolderName").addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); createFolderInBrowser(); }
+    });
+    $("#fsNewFolderCreate").addEventListener("click", createFolderInBrowser);
+    $("#projectNameInput").addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && state.fs.mode === "saveAs") { event.preventDefault(); saveProjectFromDialog(); }
+    });
+
     $$("[data-close-dialog]").forEach(function (button) { button.addEventListener("click", closeDialogs); });
     $$(".dialog").forEach(function (dialog) {
       dialog.addEventListener("click", function (event) { if (event.target === dialog) closeDialogs(); });
@@ -2190,6 +2616,7 @@
 
   function boot() {
     wireEvents();
+    loadProjectInfo().catch(function () { /* non fatal */ });
 
     api("/api/health").then(function (health) {
       var stats = health.stats || {};
@@ -2213,7 +2640,7 @@
       .then(function (data) {
         if (data && data.entries && data.entries.length) {
           toast("Saved timetable available",
-            data.entries.length + " class(es) are stored. Press Ctrl+O to restore them.", "info", 9000);
+            data.entries.length + " class(es) are stored. Use “Load saved” to restore them.", "info", 9000);
         }
       })
       .catch(function (err) { toast("Startup problem", err.message, "error", 10000); });

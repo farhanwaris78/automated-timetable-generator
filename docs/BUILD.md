@@ -184,11 +184,18 @@ chmod +x appimagetool-x86_64.AppImage
 TimetableGenerator(.exe)
 ├── Python 3.12 runtime
 ├── flask / jinja2 / werkzeug / sqlalchemy / waitress / dotenv
+├── pywebview          (native desktop window; browser fallback built in)
 ├── sqlite3            (standard library — no server needed)
 ├── templates/index.html
 ├── static/  style.css, app.js, favicon.svg
 └── seed_data.json     (18 courses · 45 sections · 27 instructors · 36 rooms · 20 students)
 ```
+
+The Windows `.exe` is a **windowed** build (no console window); startup
+errors appear in a native message box. On Linux the genuine desktop window
+needs the system GTK/WebKit packages — the `.deb` recommends
+`python3-gi` + `gir1.2-webkit2-4.1`, and without them the app falls back to
+the browser automatically.
 
 At runtime the app writes only to the user data folder:
 
@@ -198,7 +205,9 @@ At runtime the app writes only to the user data folder:
 | macOS | `~/Library/Application Support/TimetableGenerator/` |
 | Linux | `~/.local/share/timetable-generator/` |
 
-It contains `timetable.db` (the SQLite database) and `timetable.log`.
+It contains `timetable.db` (the SQLite database), `timetable.log`,
+`project-state.json` / `recent-projects.json` (project bookkeeping) and a
+`backups/` folder holding the last 10 automatic safety backups.
 Deleting the folder resets the app to factory state.
 
 ---
@@ -285,7 +294,7 @@ flag and the UI footer all read it from there.
 
 | Check | Result |
 |---|---|
-| `python -m pytest -q` | ✅ **83 passed** |
+| `python -m pytest -q` | ✅ **110 passed** |
 | App boots, serves the UI, saves and reloads a timetable | ✅ |
 | Whole UI driven headlessly in a real DOM (jsdom): every dialog, shortcut, drag-drop, undo/redo, capacity badge, publish and import flow | ✅ 0 JavaScript errors |
 | `python packaging/build.py exe portable` end-to-end | ✅ produced `dist/TimetableGenerator/` + `TimetableGenerator-2.0.0-linux-x86_64.tar.gz` (16 MB) |
