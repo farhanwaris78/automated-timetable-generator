@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.2.0 — capacity warnings, Excel import, publishing (PDF & calendar)
+
+**Room capacity vs enrolment**
+* Placing a class in a room that seats fewer students than are enrolled now
+  shows an amber `⚠ 58/40` badge on the class, outlines it, and counts it in a
+  new toolbar pill ("*n* room(s) too small")
+* Clicking the pill opens a **capacity report** listing every over-full class
+  with the shortfall and **suggested rooms that would fit**
+* Capacity stays a *warning*: it never blocks a placement or a save
+* Checked client-side for instant feedback and re-checked server-side on every
+  validation pass
+
+**Bulk import from Excel** — <kbd>Ctrl+I</kbd>
+* `GET /api/import/template` produces a workbook with a *Read me* sheet and one
+  sheet each for **Teachers, Buildings, Rooms, Courses, Sections**
+* `POST /api/import/xlsx` imports it through the same validation the GUI uses
+* Records are matched by natural key (teacher name/email, building name,
+  building + room number, course code, course + section) and **updated instead
+  of duplicated** — re-importing the same file is safe
+* Bad rows are reported with sheet name, row number and reason; the rest of the
+  file still imports
+
+**Publish & share** — <kbd>Ctrl+Shift+P</kbd>
+* New `timetable/publishing.py`: a **dependency-free PDF writer** (no ReportLab,
+  no headless browser) using the built-in PDF fonts, with real Helvetica metrics
+  for centring and truncation
+* PDF scopes: master grid (one page per day), **one page per teacher**, per
+  course section, or per room — from the saved timetable *or* the unsaved grid
+* **iCalendar**: `.ics` download plus a live subscription feed at
+  `/calendar.ics?teacher=…&section=…&weeks=…`, RFC 5545 line-folded, one
+  weekly-recurring VEVENT per class
+* The publish dialog builds the subscription link and copies it to the clipboard
+
+**GUI completeness**
+* **Add building** and **Add section** are now proper dialogs (they were
+  `window.prompt`, which some desktop webviews refuse to show); the section
+  dialog has course and teacher pickers
+* New **Buildings** tab in *Manage data* with room and seat totals, rename
+  (`PUT /api/buildings/<id>`) and safe delete
+* "+ section" button on every course row in *Manage data*
+* Every destructive action uses a styled in-app confirmation dialog instead of
+  `window.confirm`
+
+**Removed**
+* `html2pdf.bundle.min.js` (927 KB) — PDFs are now rendered by the app itself,
+  which makes the installer smaller and the output vector-sharp
+
+**Tests**: 56 → **83**, including front-end integrity checks that fail the build
+if a button's `data-action`, a shortcut or a dialog id has no implementation.
+
 ## 2.1.0 — data management, shifts, Excel, undo/redo
 
 **Manage your own data (no SQL needed)**

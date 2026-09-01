@@ -8,7 +8,6 @@
   <title>Automated Timetable Generator</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script defer src="{{ url_for('static', filename='vendor/html2pdf.bundle.min.js') }}"></script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 </head>
 
@@ -28,6 +27,8 @@
         <button type="button" class="btn btn-ghost" data-action="addTeacher">+ Teacher</button>
         <button type="button" class="btn btn-ghost" data-action="addRoom">+ Room</button>
         <button type="button" class="btn btn-ghost" data-action="addCourse">+ Course</button>
+        <button type="button" class="btn btn-ghost" data-action="addBuilding">+ Building</button>
+        <button type="button" class="btn btn-ghost" data-action="addSection">+ Section</button>
         <button type="button" class="btn btn-ghost" data-action="manage">Manage data</button>
       </div>
       <span id="dbStatus" class="pill pill-muted" title="Database status">Connecting&hellip;</span>
@@ -138,7 +139,8 @@
         </div>
         <div class="toolbar-group">
           <button type="button" class="btn btn-accent" data-action="exportExcel">Export Excel</button>
-          <button type="button" class="btn" data-action="exportPdf">PDF</button>
+          <button type="button" class="btn btn-accent" data-action="publish">Publish&hellip;</button>
+          <button type="button" class="btn" data-action="importData">Import Excel</button>
           <button type="button" class="btn" data-action="exportCsv">CSV</button>
           <button type="button" class="btn" data-action="print">Print</button>
         </div>
@@ -150,6 +152,7 @@
           <span id="shiftPill" class="pill pill-shift">Morning</span>
           <span id="placedCount" class="pill pill-muted">0 scheduled</span>
           <span id="conflictCount" class="pill pill-ok">No clashes</span>
+          <span id="warnCount" class="pill pill-ok" title="Rooms that are too small for the enrolled class">No capacity warnings</span>
         </div>
       </div>
 
@@ -280,6 +283,7 @@
         <button type="button" class="tab" data-tab="teachers" aria-selected="true">Teachers</button>
         <button type="button" class="tab" data-tab="rooms" aria-selected="false">Classrooms</button>
         <button type="button" class="tab" data-tab="courses" aria-selected="false">Courses &amp; codes</button>
+        <button type="button" class="tab" data-tab="buildings" aria-selected="false">Buildings</button>
       </div>
       <div class="dialog-body">
         <div class="manage-toolbar">
@@ -288,6 +292,134 @@
           <button type="button" class="btn btn-primary" id="manageAddBtn">Add</button>
         </div>
         <div id="managePanel" class="manage-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- add building -->
+  <div id="buildingDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="buildingDialogTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="buildingDialogTitle">Add building</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <form id="buildingForm" class="dialog-body form-grid" autocomplete="off">
+        <input type="hidden" id="buildingId">
+        <label for="buildingName">Building name *</label>
+        <input type="text" id="buildingName" required maxlength="255" placeholder="D  or  Science Block">
+        <p class="form-hint">Buildings group your classrooms and drive the <em>Building</em> filter above the grid.</p>
+        <div class="form-actions">
+          <button type="button" class="btn" data-close-dialog>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save building</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- add section to an existing course -->
+  <div id="sectionDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="sectionDialogTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="sectionDialogTitle">Add section</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <form id="sectionForm" class="dialog-body form-grid" autocomplete="off">
+        <label for="sectionCourse">Course *</label>
+        <select id="sectionCourse" required></select>
+        <label for="sectionName">Section *</label>
+        <input type="text" id="sectionName" required maxlength="8" placeholder="D" style="text-transform:uppercase">
+        <label for="sectionTeacher">Teacher</label>
+        <select id="sectionTeacher">
+          <option value="">Unassigned</option>
+        </select>
+        <p class="form-hint">Sections are what you drag onto the grid. Each one can have its own teacher.</p>
+        <div class="form-actions">
+          <button type="button" class="btn" data-close-dialog>Cancel</button>
+          <button type="submit" class="btn btn-primary">Add section</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- import from Excel -->
+  <div id="importDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="importDialogTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="importDialogTitle">Import data from Excel</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <ol class="help-list tight">
+          <li>Download the template - it has one sheet each for <strong>Teachers, Buildings, Rooms, Courses</strong>
+            and <strong>Sections</strong>.</li>
+          <li>Fill it in Excel, LibreOffice or Google Sheets and save as <code>.xlsx</code>.</li>
+          <li>Choose the file below. Existing records are matched by name / code and <strong>updated</strong>, never
+            duplicated. Bad rows are listed instead of stopping the import.</li>
+        </ol>
+        <div class="import-row">
+          <button type="button" class="btn" id="downloadTemplateBtn">Download template</button>
+          <input type="file" id="importFile" accept=".xlsx" class="file-input">
+          <button type="button" class="btn btn-primary" id="runImportBtn">Import file</button>
+        </div>
+        <div id="importResult" class="import-result" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- publish: PDF + calendar -->
+  <div id="publishDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="publishDialogTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="publishDialogTitle">Publish &amp; share</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label for="publishScope">What to publish</label>
+          <select id="publishScope">
+            <option value="all">Master grid - one page per day</option>
+            <option value="teacher">One page per teacher</option>
+            <option value="section">One page per course section</option>
+            <option value="room">One page per room</option>
+          </select>
+          <label for="publishFilter">Limit to</label>
+          <select id="publishFilter">
+            <option value="">Everyone / everything</option>
+          </select>
+          <label for="publishSource">Data</label>
+          <select id="publishSource">
+            <option value="grid">The grid on screen (unsaved changes included)</option>
+            <option value="saved">The saved timetable</option>
+          </select>
+          <label for="publishWeeks">Calendar repeats for</label>
+          <input type="number" id="publishWeeks" min="1" max="52" value="16">
+        </div>
+        <div class="publish-actions">
+          <button type="button" class="btn btn-primary" id="publishPdfBtn">Download PDF</button>
+          <button type="button" class="btn" id="publishIcsBtn">Download .ics</button>
+          <button type="button" class="btn" id="publishCopyBtn">Copy subscription link</button>
+        </div>
+        <p class="muted">The subscription link is a live <code>.ics</code> feed served by this app - paste it into
+          Google&nbsp;Calendar, Outlook or Apple&nbsp;Calendar and the timetable keeps itself up to date while the app
+          is running.</p>
+        <code id="publishLink" class="publish-link"></code>
+      </div>
+    </div>
+  </div>
+
+  <!-- confirm (replaces window.confirm, which some desktop shells block) -->
+  <div id="confirmDialog" class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+    <div class="dialog-card dialog-narrow">
+      <header class="dialog-head">
+        <h3 id="confirmTitle">Are you sure?</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <p id="confirmMessage"></p>
+        <div class="form-actions">
+          <button type="button" class="btn" id="confirmNo">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirmYes">Yes, continue</button>
+        </div>
       </div>
     </div>
   </div>
@@ -327,6 +459,10 @@
           <li><strong>Undo/redo</strong> anything with <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.</li>
           <li><strong>Save</strong> (<kbd>Ctrl+S</kbd>) and <strong>export</strong> to Excel (<kbd>Ctrl+E</kbd>) - one
             worksheet per day, plus Summary and By-Teacher sheets.</li>
+          <li><strong>Publish</strong> (<kbd>Ctrl+Shift+P</kbd>) - per-teacher, per-section or per-room PDFs, and a
+            live calendar feed students can subscribe to.</li>
+          <li><strong>Import</strong> (<kbd>Ctrl+I</kbd>) - bulk-load teachers, rooms and courses from a spreadsheet
+            instead of typing them one by one.</li>
         </ol>
       </div>
     </div>

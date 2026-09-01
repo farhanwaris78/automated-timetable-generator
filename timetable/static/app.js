@@ -1,7 +1,8 @@
 /* =========================================================================
  * Automated Timetable Generator - front-end controller
- * Vanilla ES2017+, zero third-party runtime dependencies (html2pdf is
- * bundled locally and optional).  Runs fully offline.
+ * Vanilla ES2017+, zero third-party runtime dependencies at all.  PDFs are
+ * rendered server-side by timetable/publishing.py, so nothing here needs the
+ * network and the app runs completely offline.
  * ========================================================================= */
 (function () {
   "use strict";
@@ -19,6 +20,7 @@
     { group: "Add data", combo: "Alt+B", action: "addBuilding", label: "Add building" },
     { group: "Add data", combo: "Alt+S", action: "addSection", label: "Add section to a course" },
     { group: "Add data", combo: "Alt+M", action: "manage", label: "Manage teachers / rooms / courses" },
+    { group: "Add data", combo: "Ctrl+I", action: "importData", label: "Import teachers / rooms / courses from Excel" },
 
     { group: "Edit", combo: "Ctrl+Z", action: "undo", label: "Undo" },
     { group: "Edit", combo: "Ctrl+Y", action: "redo", label: "Redo" },
@@ -33,7 +35,8 @@
     { group: "Timetable", combo: "Ctrl+Shift+A", action: "autofill", label: "Auto-fill the remaining sections" },
 
     { group: "Export", combo: "Ctrl+E", action: "exportExcel", label: "Export to Excel (one sheet per day)" },
-    { group: "Export", combo: "Alt+P", action: "exportPdf", label: "Export to PDF" },
+    { group: "Export", combo: "Ctrl+Shift+P", action: "publish", label: "Publish: per-teacher / per-section PDF + calendar" },
+    { group: "Export", combo: "Alt+P", action: "publish", label: "Publish (same dialog)" },
     { group: "Export", combo: "Alt+V", action: "exportCsv", label: "Export to CSV" },
     { group: "Export", combo: "Ctrl+P", action: "print", label: "Print" },
 
@@ -197,6 +200,21 @@
 
   function closeDialogs() { $$(".dialog").forEach(function (dialog) { dialog.hidden = true; }); }
 
+  /* In-app confirmation. window.confirm() is blocked by some desktop webviews
+     (and cannot be styled), so every destructive action routes through this. */
+  function confirmAction(title, message, onYes, confirmLabel) {
+    $("#confirmTitle").textContent = title;
+    $("#confirmMessage").textContent = message;
+    var yes = $("#confirmYes");
+    yes.textContent = confirmLabel || "Yes, continue";
+    var fresh = yes.cloneNode(true);          // drop any previous handler
+    yes.parentNode.replaceChild(fresh, yes);
+    fresh.addEventListener("click", function () { closeDialogs(); onYes(); });
+    $("#confirmNo").onclick = closeDialogs;
+    openDialog("#confirmDialog");
+    window.setTimeout(function () { fresh.focus(); }, 30);
+  }
+
   /* ------------------------------ undo / redo ----------------------------- */
   function snapshot() {
     state.history.push(JSON.stringify(state.placements));
@@ -244,6 +262,36 @@
       if (state.courses[i].id === courseId && state.courses[i].section === section) return state.courses[i];
     }
     return null;
+  }
+
+  function roomById(id) {
+    for (var i = 0; i < state.rooms.length; i++) if (state.rooms[i].id === id) return state.rooms[i];
+    return null;
+  }
+
+  /* Soft capacity check - computed locally so the warning appears instantly,
+     and confirmed by the server on the next validation pass. */
+  function capacityIssue(placement) {
+    var course = findCourse(placement.course_id, placement.section);
+    var room = roomById(placement.room_id);
+    if (!course || !room || !room.capacity) return null;
+    var enrolled = course.num_students || 0;
+    if (enrolled <= room.capacity) return null;
+    return {
+      enrolled: enrolled,
+      capacity: room.capacity,
+      short: enrolled - room.capacity,
+      message: enrolled + " students enrolled but " + room.label + " seats only " + room.capacity +
+        " (" + (enrolled - room.capacity) + " too many)."
+    };
+  }
+
+  function bestRoomsFor(course) {
+    return state.rooms
+      .filter(function (room) { return (room.capacity || 0) >= (course.num_students || 0); })
+      .sort(function (a, b) { return a.capacity - b.capacity; })
+      .slice(0, 3)
+      .map(function (room) { return room.label + " (" + room.capacity + ")"; });
   }
 
   function placedKeys() {
@@ -520,8 +568,10 @@
     };
     var conflicts = state.conflicts[placement.uid] || [];
     var hasError = conflicts.some(function (c) { return c.severity === "error"; });
+    var capacity = capacityIssue(placement);
 
     var node = el("div", "placed" + (hasError ? " has-conflict" : "") +
+      (capacity && !hasError ? " has-warning" : "") +
       (state.selectedUid === placement.uid ? " selected" : ""));
     node.draggable = true;
     node.dataset.uid = placement.uid;
@@ -532,7 +582,15 @@
     if (course.code) title.appendChild(el("span", "p-code", course.code));
     title.appendChild(document.createTextNode(course.name + " - " + placement.section));
     node.appendChild(title);
-    node.appendChild(el("div", "p-meta", (course.instructor || "Unassigned") + " · " + course.num_students + " std"));
+    var meta = el("div", "p-meta");
+    meta.appendChild(document.createTextNode((course.instructor || "Unassigned") + " · " + course.num_students + " std"));
+    node.appendChild(meta);
+
+    if (capacity) {
+      var badge = el("span", "cap-badge", "⚠ " + capacity.enrolled + "/" + capacity.capacity);
+      badge.title = capacity.message;
+      node.appendChild(badge);
+    }
 
     var remove = el("button", "p-remove", "\u00d7");
     remove.type = "button";
@@ -545,9 +603,11 @@
     });
     node.appendChild(remove);
 
-    if (conflicts.length) {
-      node.title = conflicts.map(function (c) { return "[" + c.kind + "] " + c.message; }).join("\n");
+    var tips = conflicts.map(function (c) { return "[" + c.kind + "] " + c.message; });
+    if (capacity && !tips.some(function (t) { return t.indexOf("[capacity]") === 0; })) {
+      tips.push("[capacity] " + capacity.message);
     }
+    if (tips.length) node.title = tips.join("\n");
 
     node.addEventListener("dragstart", function (event) {
       event.dataTransfer.effectAllowed = "move";
@@ -571,6 +631,53 @@
     var pill = $("#conflictCount");
     pill.textContent = errors ? errors + " clash(es)" : "No clashes";
     pill.className = "pill " + (errors ? "pill-error" : "pill-ok");
+
+    var overfull = state.placements.filter(capacityIssue);
+    var warnPill = $("#warnCount");
+    warnPill.textContent = overfull.length
+      ? overfull.length + " room(s) too small"
+      : "No capacity warnings";
+    warnPill.className = "pill " + (overfull.length ? "pill-warn" : "pill-ok");
+    warnPill.title = overfull.length
+      ? overfull.map(function (p) { return capacityIssue(p).message; }).join("\n")
+      : "Every scheduled class fits in its room.";
+    warnPill.style.cursor = overfull.length ? "pointer" : "default";
+    warnPill.onclick = overfull.length ? showCapacityReport : null;
+  }
+
+  /* A single screen listing every class that does not fit its room, with a
+     suggestion of rooms that would. */
+  function showCapacityReport() {
+    var rows = state.placements.map(function (placement) {
+      var issue = capacityIssue(placement);
+      return issue ? { placement: placement, issue: issue } : null;
+    }).filter(Boolean);
+
+    $("#courseDialogTitle").textContent = "Capacity warnings (" + rows.length + ")";
+    var body = $("#courseDialogBody");
+    body.innerHTML = "";
+    if (!rows.length) {
+      body.appendChild(el("p", "muted", "Every scheduled class fits comfortably in its room."));
+      openDialog("#courseDialog");
+      return;
+    }
+    body.appendChild(el("p", "muted",
+      "These classes are scheduled in rooms that seat fewer students than are enrolled. " +
+      "They do not block saving - move them if you can."));
+    var list = el("ul", "conflict-list");
+    rows.forEach(function (row) {
+      var course = findCourse(row.placement.course_id, row.placement.section) || {};
+      var item = el("li", "warning");
+      item.appendChild(el("div", "conflict-kind",
+        (course.code ? course.code + " " : "") + (course.name || "") + " - " + row.placement.section));
+      item.appendChild(el("div", null,
+        WEEKDAYS[row.placement.day - 1] + " " + to12h(row.placement.start) + " · " + row.issue.message));
+      var better = bestRoomsFor(course);
+      if (better.length) item.appendChild(el("div", "muted", "Rooms that would fit: " + better.join(", ")));
+      list.appendChild(item);
+    });
+    body.appendChild(list);
+    openDialog("#courseDialog");
   }
 
   /* ----------------------------- drag & drop ------------------------------ */
@@ -901,10 +1008,16 @@
   }
 
   function resetSavedTimetable() {
-    if (!window.confirm("This deletes the saved timetable from the database. Continue?")) return;
-    api("/api/timetable/reset", { method: "POST" })
-      .then(function (result) { toast("Reset done", result.message, "success"); })
-      .catch(function (err) { toast("Reset failed", err.message, "error"); });
+    confirmAction(
+      "Delete the saved timetable?",
+      "Every class stored in the database will be removed. The grid on screen is not touched.",
+      function () {
+        api("/api/timetable/reset", { method: "POST" })
+          .then(function (result) { toast("Reset done", result.message, "success"); })
+          .catch(function (err) { toast("Reset failed", err.message, "error"); });
+      },
+      "Delete saved timetable"
+    );
   }
 
   function autofill() {
@@ -1007,28 +1120,189 @@
     return host;
   }
 
-  function exportPdf() {
-    if (!currentSlots().length) { toast("Nothing to export", "Generate a grid first.", "warning"); return; }
-    var host = buildPrintable();
-    if (typeof window.html2pdf !== "function") {
-      toast("PDF engine missing", "Falling back to the browser print dialog.", "warning");
-      window.print();
+  /* ======================= publish: PDF + calendar ======================== */
+  function publishBody(extra) {
+    var body = {
+      scope: $("#publishScope").value,
+      days: state.days,
+      title: "University Timetable",
+      weeks: parseInt($("#publishWeeks").value, 10) || 16
+    };
+    var filter = $("#publishFilter").value;
+    if (filter) {
+      var parsed = JSON.parse(filter);
+      Object.keys(parsed).forEach(function (key) { body[key] = parsed[key]; });
+    }
+    if ($("#publishSource").value === "grid") {
+      body.assignments = state.placements.map(toAssignment);
+      body.slots = currentSlots();
+    }
+    Object.keys(extra || {}).forEach(function (key) { body[key] = extra[key]; });
+    return body;
+  }
+
+  function fillPublishFilter() {
+    var select = $("#publishFilter");
+    var scope = $("#publishScope").value;
+    select.innerHTML = '<option value="">Everyone / everything</option>';
+    if (scope === "all") { select.disabled = true; updatePublishLink(); return; }
+    select.disabled = false;
+
+    if (scope === "teacher") {
+      var names = {};
+      state.placements.forEach(function (placement) {
+        var course = findCourse(placement.course_id, placement.section);
+        if (course && course.instructor) names[course.instructor] = true;
+      });
+      Object.keys(names).sort().forEach(function (name) {
+        var option = el("option", null, name);
+        option.value = JSON.stringify({ teacher: name });
+        select.appendChild(option);
+      });
+    } else if (scope === "section") {
+      var seen = {};
+      state.placements.forEach(function (placement) {
+        var key = placement.course_id + ":" + placement.section;
+        if (seen[key]) return;
+        seen[key] = true;
+        var course = findCourse(placement.course_id, placement.section) || {};
+        var option = el("option", null, (course.code ? course.code + " " : "") +
+          (course.name || placement.course_id) + " - " + placement.section);
+        option.value = JSON.stringify({ course_id: placement.course_id, section: placement.section });
+        select.appendChild(option);
+      });
+    } else if (scope === "room") {
+      var rooms = {};
+      state.placements.forEach(function (placement) { rooms[placement.room_id] = true; });
+      Object.keys(rooms).forEach(function (id) {
+        var room = roomById(parseInt(id, 10));
+        var option = el("option", null, room ? room.label : id);
+        option.value = JSON.stringify({ room_id: parseInt(id, 10) });
+        select.appendChild(option);
+      });
+    }
+    updatePublishLink();
+  }
+
+  function updatePublishLink() {
+    var params = [];
+    var filter = $("#publishFilter").value;
+    if (filter) {
+      var parsed = JSON.parse(filter);
+      Object.keys(parsed).forEach(function (key) {
+        params.push(encodeURIComponent(key) + "=" + encodeURIComponent(parsed[key]));
+      });
+    }
+    params.push("weeks=" + (parseInt($("#publishWeeks").value, 10) || 16));
+    $("#publishLink").textContent = window.location.origin + "/calendar.ics?" + params.join("&");
+  }
+
+  function openPublishDialog() {
+    if (!state.placements.length) {
+      toast("Nothing to publish", "Schedule or load a timetable first.", "warning");
       return;
     }
-    host.style.display = "block";
-    window.html2pdf().set({
-      margin: 8,
-      filename: "timetable-" + state.shift + ".pdf",
-      image: { type: "jpeg", quality: 0.96 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: "mm", format: "a3", orientation: "landscape" }
-    }).from(host).save().then(function () {
-      host.style.display = "none";
-      toast("PDF exported", "Saved to your Downloads folder.", "success");
-    }).catch(function (err) {
-      host.style.display = "none";
-      toast("PDF failed", err.message || String(err), "error");
-    });
+    fillPublishFilter();
+    openDialog("#publishDialog");
+  }
+
+  function publishPdf() {
+    var scope = $("#publishScope").value;
+    toast("Building PDF", "Laying out the pages…", "info", 2000);
+    api("/api/publish/pdf", { method: "POST", raw: true, body: publishBody({}) })
+      .then(function (blob) {
+        downloadBlob(blob, "timetable-" + scope + ".pdf");
+        toast("PDF ready", "timetable-" + scope + ".pdf downloaded.", "success");
+      })
+      .catch(function (err) { toast("PDF failed", err.message, "error"); });
+  }
+
+  function publishIcs() {
+    api("/api/publish/ics", { method: "POST", raw: true, body: publishBody({}) })
+      .then(function (blob) {
+        downloadBlob(blob, "timetable.ics");
+        toast("Calendar ready", "timetable.ics downloaded — open it with any calendar app.", "success");
+      })
+      .catch(function (err) { toast("Calendar failed", err.message, "error"); });
+  }
+
+  function copyPublishLink() {
+    var link = $("#publishLink").textContent;
+    var done = function () { toast("Link copied", "Paste it into your calendar app as a subscription.", "success"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(done, function () { window.prompt("Copy this link:", link); });
+    } else {
+      var field = el("textarea");
+      field.value = link;
+      document.body.appendChild(field);
+      field.select();
+      try { document.execCommand("copy"); done(); } catch (err) { /* ignore */ }
+      document.body.removeChild(field);
+    }
+  }
+
+  /* ========================= import from Excel ============================ */
+  function openImportDialog() {
+    $("#importResult").innerHTML = "";
+    $("#importFile").value = "";
+    openDialog("#importDialog");
+  }
+
+  function downloadTemplate() {
+    api("/api/import/template", { raw: true })
+      .then(function (blob) {
+        downloadBlob(blob, "timetable-import-template.xlsx");
+        toast("Template downloaded", "Fill it in, then come back and import it.", "success");
+      })
+      .catch(function (err) { toast("Template failed", err.message, "error"); });
+  }
+
+  function runImport() {
+    var input = $("#importFile");
+    if (!input.files || !input.files.length) {
+      toast("Choose a file", "Pick the .xlsx file you filled in.", "warning");
+      return;
+    }
+    var host = $("#importResult");
+    host.innerHTML = '<p class="muted">Importing…</p>';
+    var form = new FormData();
+    form.append("file", input.files[0]);
+
+    fetch("/api/import/xlsx", { method: "POST", body: form })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          if (!response.ok) throw new Error(data.message || ("HTTP " + response.status));
+          return data;
+        });
+      })
+      .then(function (report) {
+        host.innerHTML = "";
+        var summary = el("p", report.ok ? "import-ok" : "import-partial");
+        summary.textContent = report.total_created + " record(s) added, " + report.total_updated +
+          " updated" + (report.skipped ? ", " + report.skipped + " row(s) skipped." : ".");
+        host.appendChild(summary);
+        host.appendChild(el("p", "muted", report.summary));
+
+        if (report.errors && report.errors.length) {
+          host.appendChild(el("h4", null, "Rows that need attention"));
+          var list = el("ul", "conflict-list");
+          report.errors.forEach(function (error) {
+            var item = el("li", "warning");
+            item.appendChild(el("div", "conflict-kind", error.sheet + " · row " + error.row));
+            item.appendChild(el("div", null, error.message));
+            list.appendChild(item);
+          });
+          host.appendChild(list);
+        }
+        toast(report.ok ? "Import complete" : "Imported with warnings", report.summary,
+          report.ok ? "success" : "warning", 7000);
+        return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
+      })
+      .catch(function (err) {
+        host.innerHTML = "";
+        host.appendChild(el("p", "import-error", err.message));
+        toast("Import failed", err.message, "error");
+      });
   }
 
   function exportCsv() {
@@ -1092,15 +1366,18 @@
   }
 
   function fillTeacherSelect() {
-    var select = $("#courseTeacher");
-    var current = select.value;
-    select.innerHTML = '<option value="">Unassigned</option>';
-    state.instructors.forEach(function (teacher) {
-      var option = el("option", null, teacher.name + " (" + teacher.department + ")");
-      option.value = teacher.id;
-      select.appendChild(option);
+    ["#courseTeacher", "#sectionTeacher"].forEach(function (selector) {
+      var select = $(selector);
+      if (!select) return;
+      var current = select.value;
+      select.innerHTML = '<option value="">Unassigned</option>';
+      state.instructors.forEach(function (teacher) {
+        var option = el("option", null, teacher.name + " (" + teacher.department + ")");
+        option.value = teacher.id;
+        select.appendChild(option);
+      });
+      select.value = current;
     });
-    select.value = current;
   }
 
   /* ---- teacher ---- */
@@ -1161,15 +1438,26 @@
       .catch(function (err) { toast("Could not save the room", err.message, "error"); });
   }
 
-  function addBuilding() {
-    var name = window.prompt("Name of the new building (e.g. D or Science Block):", "");
-    if (!name) return;
-    api("/api/buildings", { method: "POST", body: { name: name } })
+  function openBuildingDialog(building) {
+    $("#buildingDialogTitle").textContent = building ? "Rename building" : "Add building";
+    $("#buildingId").value = building ? building.id : "";
+    $("#buildingName").value = building ? building.name : "";
+    openDialog("#buildingDialog");
+  }
+
+  function submitBuilding(event) {
+    event.preventDefault();
+    var id = $("#buildingId").value;
+    api(id ? "/api/buildings/" + id : "/api/buildings", {
+      method: id ? "PUT" : "POST",
+      body: { name: $("#buildingName").value }
+    })
       .then(function (building) {
-        toast("Building added", building.name, "success");
-        return refreshCatalogue();
+        closeDialogs();
+        toast(id ? "Building renamed" : "Building added", building.name, "success");
+        return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
       })
-      .catch(function (err) { toast("Could not add the building", err.message, "error"); });
+      .catch(function (err) { toast("Could not save the building", err.message, "error"); });
   }
 
   /* ---- course ---- */
@@ -1214,23 +1502,43 @@
       .catch(function (err) { toast("Could not save the course", err.message, "error"); });
   }
 
-  function addSection() {
+  function openSectionDialog(preselectCourseId) {
+    var select = $("#sectionCourse");
+    select.innerHTML = "";
     api("/api/admin/courses").then(function (courses) {
-      if (!courses.length) { toast("Add a course first", "", "warning"); return; }
-      var listing = courses.slice(0, 40).map(function (c) { return c.code + " — " + c.name; }).join("\n");
-      var code = window.prompt("Course code to add a section to:\n\n" + listing, courses[0].code);
-      if (!code) return;
-      var match = courses.filter(function (c) { return c.code.toUpperCase() === code.trim().toUpperCase(); })[0];
-      if (!match) { toast("Unknown course code", code, "error"); return; }
-      var section = window.prompt("New section for " + match.code + " (e.g. D):", "");
-      if (!section) return;
-      api("/api/courses/" + match.id + "/sections", { method: "POST", body: { section: section } })
-        .then(function () {
-          toast("Section added", match.code + " - " + section.toUpperCase(), "success");
-          return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
-        })
-        .catch(function (err) { toast("Could not add the section", err.message, "error"); });
-    });
+      if (!courses.length) {
+        toast("Add a course first", "Press Alt+C to create one.", "warning");
+        return;
+      }
+      courses.forEach(function (course) {
+        var option = el("option", null, course.code + " — " + course.name +
+          "  (" + (course.sections || []).length + " section(s))");
+        option.value = course.id;
+        select.appendChild(option);
+      });
+      if (preselectCourseId) select.value = preselectCourseId;
+      $("#sectionName").value = "";
+      fillTeacherSelect();
+      openDialog("#sectionDialog");
+    }).catch(function (err) { toast("Could not load courses", err.message, "error"); });
+  }
+
+  function submitSection(event) {
+    event.preventDefault();
+    var courseId = $("#sectionCourse").value;
+    var section = ($("#sectionName").value || "").trim().toUpperCase();
+    var teacherId = $("#sectionTeacher").value;
+    if (!courseId || !section) return;
+    api("/api/courses/" + courseId + "/sections", {
+      method: "POST",
+      body: { section: section, instructor_id: teacherId || null }
+    })
+      .then(function () {
+        closeDialogs();
+        toast("Section added", "Section " + section + " is ready to drag onto the grid.", "success");
+        return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
+      })
+      .catch(function (err) { toast("Could not add the section", err.message, "error"); });
   }
 
   /* ---- manage dialog ---- */
@@ -1250,7 +1558,10 @@
     host.innerHTML = '<p class="muted">Loading…</p>';
 
     var addButton = $("#manageAddBtn");
-    addButton.textContent = { teachers: "+ Add teacher", rooms: "+ Add classroom", courses: "+ Add course" }[state.manageTab];
+    addButton.textContent = {
+      teachers: "+ Add teacher", rooms: "+ Add classroom",
+      courses: "+ Add course", buildings: "+ Add building"
+    }[state.manageTab];
 
     function table(headers, rows) {
       var element = el("table", "manage-table");
@@ -1278,13 +1589,14 @@
     }
 
     function confirmDelete(what, request) {
-      if (!window.confirm("Delete " + what + "?")) return;
-      request()
-        .then(function () {
-          toast("Deleted", what, "success");
-          return refreshCatalogue().then(renderManage);
-        })
-        .catch(function (err) { toast("Could not delete", err.message, "error"); });
+      confirmAction("Delete " + what + "?", "This cannot be undone.", function () {
+        request()
+          .then(function () {
+            toast("Deleted", what, "success");
+            return refreshCatalogue().then(renderManage);
+          })
+          .catch(function (err) { toast("Could not delete", err.message, "error"); });
+      }, "Delete");
     }
 
     if (state.manageTab === "teachers") {
@@ -1336,6 +1648,36 @@
       return;
     }
 
+    if (state.manageTab === "buildings") {
+      var buildingRooms = {};
+      state.rooms.forEach(function (room) {
+        buildingRooms[room.building_id] = (buildingRooms[room.building_id] || 0) + 1;
+      });
+      var visible = state.buildings.filter(function (building) {
+        return !query || building.name.toLowerCase().indexOf(query) >= 0;
+      });
+      host.innerHTML = "";
+      host.appendChild(table(["Building", "Classrooms", "Seats", ""], visible.map(function (building) {
+        var seats = state.rooms
+          .filter(function (room) { return room.building_id === building.id; })
+          .reduce(function (total, room) { return total + (room.capacity || 0); }, 0);
+        var row = el("tr");
+        row.appendChild(el("td", null, building.name));
+        row.appendChild(el("td", null, buildingRooms[building.id] || 0));
+        row.appendChild(el("td", null, seats));
+        row.appendChild(actions(
+          function () { openBuildingDialog(building); },
+          function () {
+            confirmDelete("building " + building.name, function () {
+              return api("/api/buildings/" + building.id, { method: "DELETE" });
+            });
+          }
+        ));
+        return row;
+      })));
+      return;
+    }
+
     api("/api/admin/courses").then(function (courses) {
       var filtered = courses.filter(function (course) {
         return !query || (course.code + " " + course.name + " " + course.department).toLowerCase().indexOf(query) >= 0;
@@ -1366,6 +1708,11 @@
           chip.appendChild(kill);
           sectionCell.appendChild(chip);
         });
+        var add = el("button", "btn btn-tiny", "+ section");
+        add.type = "button";
+        add.title = "Add another section to " + course.code;
+        add.addEventListener("click", function () { openSectionDialog(course.id); });
+        sectionCell.appendChild(add);
         row.appendChild(sectionCell);
 
         row.appendChild(actions(
@@ -1447,8 +1794,8 @@
     addTeacher: function () { openTeacherDialog(null); },
     addRoom: function () { openRoomDialog(null); },
     addCourse: function () { openCourseDialog(null); },
-    addBuilding: addBuilding,
-    addSection: addSection,
+    addBuilding: function () { openBuildingDialog(null); },
+    addSection: function () { openSectionDialog(null); },
     manage: function () { openManage(); },
     undo: undo,
     redo: redo,
@@ -1459,12 +1806,19 @@
     },
     clearGrid: function () {
       if (!state.placements.length) { toast("Already empty", "", "info", 2000); return; }
-      if (!window.confirm("Remove every class from the grid? (The saved timetable is untouched.)")) return;
-      snapshot();
-      state.placements = [];
-      state.conflicts = {};
-      state.dirty = true;
-      renderAll();
+      confirmAction(
+        "Clear the grid?",
+        "All " + state.placements.length + " class(es) on screen are removed. " +
+        "The saved timetable is untouched and Ctrl+Z brings them back.",
+        function () {
+          snapshot();
+          state.placements = [];
+          state.conflicts = {};
+          state.dirty = true;
+          renderAll();
+        },
+        "Clear grid"
+      );
     },
     generate: function () { generateGrid({}); },
     save: saveToDatabase,
@@ -1472,7 +1826,8 @@
     validate: function () { revalidateAll({}); },
     autofill: autofill,
     exportExcel: exportExcel,
-    exportPdf: exportPdf,
+    publish: openPublishDialog,
+    importData: openImportDialog,
     exportCsv: exportCsv,
     print: function () { buildPrintable(); window.print(); },
     resetSaved: resetSavedTimetable,
@@ -1577,6 +1932,18 @@
     $("#teacherForm").addEventListener("submit", submitTeacher);
     $("#roomForm").addEventListener("submit", submitRoom);
     $("#courseForm").addEventListener("submit", submitCourse);
+    $("#buildingForm").addEventListener("submit", submitBuilding);
+    $("#sectionForm").addEventListener("submit", submitSection);
+
+    $("#publishScope").addEventListener("change", fillPublishFilter);
+    $("#publishFilter").addEventListener("change", updatePublishLink);
+    $("#publishWeeks").addEventListener("input", updatePublishLink);
+    $("#publishPdfBtn").addEventListener("click", publishPdf);
+    $("#publishIcsBtn").addEventListener("click", publishIcs);
+    $("#publishCopyBtn").addEventListener("click", copyPublishLink);
+
+    $("#downloadTemplateBtn").addEventListener("click", downloadTemplate);
+    $("#runImportBtn").addEventListener("click", runImport);
 
     $$("#manageDialog .tab").forEach(function (tab) {
       tab.addEventListener("click", function () { openManage(tab.dataset.tab); });
@@ -1585,6 +1952,7 @@
     $("#manageAddBtn").addEventListener("click", function () {
       if (state.manageTab === "teachers") openTeacherDialog(null);
       else if (state.manageTab === "rooms") openRoomDialog(null);
+      else if (state.manageTab === "buildings") openBuildingDialog(null);
       else openCourseDialog(null);
     });
 

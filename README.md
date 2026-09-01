@@ -6,11 +6,12 @@
 
 **Clash-free university scheduling — one download, no setup.**
 
-Drag & drop courses onto a room × time grid. The app blocks every room,
-instructor and student conflict *as you place classes*, and tells you exactly
-who clashes.
+Add your teachers, rooms and courses inside the app, drag sections onto a
+room × time grid, and let it block every room, instructor, student and capacity
+conflict *as you place classes*. Then publish the result as Excel, PDF or a live
+calendar feed.
 
-[Download](#-download) · [User guide](docs/USER_GUIDE.md) · [Build it yourself](docs/BUILD.md) · [What was fixed](docs/BUGS_AND_FIXES.md)
+[Download](#-download) · [User guide](docs/USER_GUIDE.md) · [Build it yourself](docs/BUILD.md) · [Changelog](CHANGELOG.md) · [What was fixed](docs/BUGS_AND_FIXES.md)
 
 </div>
 
@@ -21,52 +22,88 @@ who clashes.
 Grab the file for your machine from the [Releases page](../../releases) — no
 Python, no SQL Server, no ODBC driver, no internet connection required.
 
-| Platform | File | Notes |
+| Platform | File | How to install |
 |---|---|---|
-| **Windows 10/11** | `AutomatedTimetableGenerator-*-win64.msi` | Installer + Start-menu shortcut |
-| Windows (portable) | `TimetableGenerator-*-windows-x64.zip` | No admin rights needed |
-| **macOS** (Apple Silicon) | `TimetableGenerator-*-macos-arm64.dmg` | |
-| macOS (Intel) | `TimetableGenerator-*-macos-x86_64.dmg` | |
-| **Ubuntu / Debian** | `timetable-generator_*_amd64.deb` | `sudo apt install ./…deb` |
-| Any Linux | `TimetableGenerator-*-linux-x86_64.tar.gz` | `./start.sh` |
+| **Windows 10/11** | `AutomatedTimetableGenerator-*-win64.msi` | Double-click → Start-menu shortcut |
+| Windows (portable) | `TimetableGenerator-*-windows-x64.zip` | Unzip, run `TimetableGenerator.exe` — no admin rights |
+| **macOS** (Apple Silicon) | `TimetableGenerator-*-macos-arm64.dmg` | Drag to Applications |
+| macOS (Intel) | `TimetableGenerator-*-macos-x86_64.dmg` | Drag to Applications |
+| **Ubuntu / Debian** | `timetable-generator_*_amd64.deb` | `sudo apt install ./timetable-generator_*_amd64.deb` |
+| Any Linux | `TimetableGenerator-*-linux-x86_64.tar.gz` | `tar -xzf …` then `./start.sh` |
 
-Double-click → a console window shows the address → your browser opens on the
-app. That's the whole installation.
+Launch it → a small console window prints the address → your browser opens on
+the app. That is the whole installation. Everything (database, logs, settings)
+lives in one per-user folder; uninstalling leaves nothing behind.
+
+> **First run:** the app creates its own SQLite database and seeds a realistic
+> sample university so you can try every feature immediately. Press
+> <kbd>F1</kbd> for the shortcut list, or **Manage data → …** to replace the
+> sample with your own.
 
 ---
 
-## ✨ What it does
+## ✨ Features
 
-* **Manage everything in the app** — add/edit/delete **teachers**, **classrooms**
-  (with capacity and type), **courses with course codes**, credit hours and
-  **sections**, each with its own keyboard shortcut. No SQL, no spreadsheets.
-* **Morning & evening shifts** with independent hours, sharing the same rooms
-  and staff; clash detection spans both.
-* **Full 1–7 day week.**
-* **Drag & drop scheduling** on a room × time grid, one tab per day.
-* **Undo / redo** (100 steps) for every action — <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.
-* **Auto-fill** places every remaining section in a conflict-free slot.
-* **Excel export with one worksheet per day**, colour-coded, plus Summary and
-  By-Teacher sheets.
-* **Discoverable shortcuts** — <kbd>F1</kbd> shows a live list generated from the
-  same registry that handles the keys, and every button's tooltip shows its key.
-* **Real clash detection, server-side, on every drop:**
-  * 🔴 **room** double-booking (overlapping, not just identical, slots)
-  * 🔴 **instructor** teaching two sections at once
-  * 🔴 **student** collisions — with the affected **roll numbers listed**
-  * 🔴 duplicate placement of the same course-section
-  * 🟠 **capacity** warning when enrolment exceeds the room's seats
-* **Class details on click** — instructor, department, headcount, full roster.
-* **Save & restore** the whole week atomically; nothing is written while a
-  clash remains.
-* **Export** to Excel (per-day sheets), PDF (one page per day), CSV, or print.
-* **Search & filter** the catalogue, restrict to a building, cap the room count.
-* **Zero configuration** — an embedded SQLite database is created on first run
-  and seeded with a realistic sample dataset (18 courses · 45 sections ·
-  27 instructors · 36 rooms · 20 students · 106 enrolments).
-* **Optionally** point it at Microsoft SQL Server, PostgreSQL or MySQL with a
-  one-line `.env` change.
-* Keyboard shortcuts, responsive layout, print stylesheet, accessible markup.
+### Your data, managed in the app
+No SQL, no seed files. Every entity has a dialog, a keyboard shortcut and a row
+in the searchable **Manage data** screen (<kbd>Alt+M</kbd>).
+
+| Entity | Shortcut | What you can set |
+|---|---|---|
+| Teacher | <kbd>Alt+T</kbd> | name, email, department, morning/evening/both |
+| Classroom | <kbd>Alt+R</kbd> | number, building, capacity, type (Classroom / Lab / Hall) |
+| Course | <kbd>Alt+C</kbd> | **course code**, title, department, credit hours, colour, sections |
+| Building | <kbd>Alt+B</kbd> | name (rooms are grouped and filtered by it) |
+| Section | <kbd>Alt+S</kbd> | section letter + the teacher who takes it |
+| Manage all | <kbd>Alt+M</kbd> | tabbed, searchable, inline edit & delete |
+
+Deletes are referentially safe: the app refuses to remove a teacher who still
+teaches, a room or course used by the saved timetable, or a building that still
+holds rooms — and tells you exactly what is blocking it.
+
+### Bulk import from Excel  <kbd>Ctrl+I</kbd>
+Download a template with one sheet each for Teachers, Buildings, Rooms, Courses
+and Sections, fill it in any spreadsheet app, and import it. Records are matched
+by name / code and **updated rather than duplicated**, so the same file can be
+re-imported safely. Invalid rows are reported with their sheet and row number
+instead of aborting the import.
+
+### Scheduling
+* **Morning & evening shifts** with independent hours, sharing rooms and staff.
+* **Full 1–7 day week**, one tab per day (<kbd>1</kbd>…<kbd>7</kbd>).
+* **Drag & drop** onto a room × time grid; drag back to the list to unschedule.
+* **Auto-fill** (<kbd>Ctrl+Shift+A</kbd>) places every remaining section in a
+  conflict-free slot — 45/45 sample sections in milliseconds.
+* **Undo / redo**, 100 steps, covering every action
+  (<kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>).
+
+### Clash detection — server-side, on every drop
+* 🔴 **room** double-booking (any overlap, not just identical slots)
+* 🔴 **instructor** teaching two sections at once
+* 🔴 **student** collisions — the affected **roll numbers are listed**
+* 🔴 duplicate placement of the same course-section
+* 🟠 **room too small** — an amber `⚠ 58/40` badge on the class, a counter in the
+  toolbar, and a click-through report that suggests rooms which would fit.
+  Capacity is a *warning*: it never blocks you from saving.
+
+### Publish & share  <kbd>Ctrl+Shift+P</kbd>
+* **Excel** (<kbd>Ctrl+E</kbd>) — one colour-coded worksheet per day, plus
+  `Summary` (auto-filtered) and `By Teacher`, landscape and fit-to-width.
+* **PDF** — master grid (one page per day), or **one page per teacher**, per
+  course section, or per room. Rendered by the app itself: vector text, real
+  page boxes, no browser print dialog and no third-party PDF library.
+* **iCalendar** — download a `.ics` file, or copy the live
+  `http://localhost:PORT/calendar.ics?teacher=…` subscription link into Google
+  Calendar, Outlook or Apple Calendar and the timetable keeps itself up to date.
+* **CSV** and a print stylesheet as well.
+
+### Everything else
+* **Discoverable shortcuts** — <kbd>F1</kbd> lists all 29, generated from the
+  same registry that handles the keys, so the docs cannot drift from the code.
+  Every button's tooltip shows its shortcut too.
+* **Zero configuration** — embedded SQLite, created and migrated automatically.
+* Optionally point it at SQL Server, PostgreSQL or MySQL with a one-line `.env`.
+* Offline by design: no CDN, no telemetry, no network calls at all.
 
 ---
 
@@ -86,11 +123,9 @@ python run.py                      # opens http://127.0.0.1:<free-port>/
 Useful flags: `--port 5000`, `--no-browser`, `--debug`, `--reset-database`,
 `--database-url …`, `--data-dir …`.
 
-Run the tests:
-
 ```bash
 pip install pytest
-python -m pytest -q                # 56 tests
+python -m pytest -q                # 83 tests
 ```
 
 ---
@@ -99,12 +134,16 @@ python -m pytest -q                # 56 tests
 
 ```bash
 pip install -r requirements-dev.txt
-python packaging/build.py          # native package(s) for the current OS
+python packaging/build.py                      # native package(s) for this OS
+python packaging/build.py exe portable         # individual targets
+python packaging/build.py all --engine cxfreeze
 ```
 
-`exe` · `msi` · `dmg` · `deb` · `portable` are individual targets. Full
-instructions, code-signing notes and the CI pipeline that builds Windows,
-macOS and Linux together: **[docs/BUILD.md](docs/BUILD.md)**.
+Targets: `exe` · `msi` (Windows) · `dmg` (macOS) · `deb` · `portable` · `all`.
+The builder drives **PyInstaller or cx_Freeze** and falls back automatically
+when the interpreter has no shared `libpython`. Full instructions, code-signing
+notes and the GitHub Actions pipeline that builds all three operating systems
+together: **[docs/BUILD.md](docs/BUILD.md)**.
 
 ---
 
@@ -115,34 +154,36 @@ launcher.py                 frozen-app entry point (PyInstaller / cx_Freeze)
 run.py / app.py             developer + WSGI entry points
 timetable/
 ├── config.py               env/.env handling, per-OS data dir, DB URL resolution
-├── db.py                   SQLAlchemy schema, engine, first-run seeding
+├── db.py                   SQLAlchemy schema, engine, migrations, first-run seeding
 ├── services.py             domain logic, clash-detection engine, auto-fill
-├── catalog.py              CRUD for teachers, rooms, courses, sections
-├── exporters.py            Excel workbook builder (one sheet per day)
+├── catalog.py              CRUD for teachers, buildings, rooms, courses, sections
+├── exporters.py            Excel workbook builder (one worksheet per day)
+├── importers.py            Excel template + bulk import with per-row reporting
+├── publishing.py           dependency-free PDF writer + iCalendar feed builder
 ├── web.py                  Flask app factory and JSON API
 ├── desktop.py              port picking, waitress server, browser launch
 ├── seed_data.json          sample dataset
 ├── templates/index.html
-└── static/                 style.css · app.js · favicon.svg · vendor/html2pdf
-packaging/                  build.py · timetable.spec · cx_setup.py · icons
-tests/test_app.py           56 tests
+└── static/                 style.css · app.js · favicon.svg
+packaging/                  build.py · timetable.spec · cx_setup.py · ci/ · icons
+tests/test_app.py           83 tests
 docs/                       USER_GUIDE · BUILD · SCHEMA · BUGS_AND_FIXES
 ```
 
-**Stack:** Python 3.10+ · Flask 3 · SQLAlchemy 2 · waitress · SQLite ·
-openpyxl · vanilla ES2017 front-end (no jQuery, no CDN — it must work offline).
+**Stack:** Python 3.10+ · Flask 3 · SQLAlchemy 2 · waitress · SQLite · openpyxl ·
+vanilla ES2017 front-end. No jQuery, no CDN, no runtime JS dependencies.
 
 ### Keyboard shortcuts
 
-Press <kbd>F1</kbd> in the app. Add data: <kbd>Alt+T</kbd> teacher ·
-<kbd>Alt+R</kbd> room · <kbd>Alt+C</kbd> course · <kbd>Alt+B</kbd> building ·
-<kbd>Alt+S</kbd> section · <kbd>Alt+M</kbd> manage. Edit: <kbd>Ctrl+Z</kbd> /
-<kbd>Ctrl+Y</kbd> · <kbd>Delete</kbd>. Timetable: <kbd>Ctrl+G</kbd> generate ·
-<kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> load · <kbd>Ctrl+K</kbd> check ·
-<kbd>Ctrl+Shift+A</kbd> auto-fill. Export: <kbd>Ctrl+E</kbd> Excel ·
-<kbd>Alt+P</kbd> PDF · <kbd>Alt+V</kbd> CSV · <kbd>Ctrl+P</kbd> print.
-View: <kbd>Alt+1</kbd>/<kbd>Alt+2</kbd> shift · <kbd>1</kbd>–<kbd>7</kbd> day ·
-<kbd>Ctrl+F</kbd> search.
+Press <kbd>F1</kbd> in the app for the authoritative list.
+
+| Group | Keys |
+|---|---|
+| Add data | <kbd>Alt+T</kbd> teacher · <kbd>Alt+R</kbd> room · <kbd>Alt+C</kbd> course · <kbd>Alt+B</kbd> building · <kbd>Alt+S</kbd> section · <kbd>Alt+M</kbd> manage · <kbd>Ctrl+I</kbd> import |
+| Edit | <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo · <kbd>Delete</kbd> remove selected · <kbd>Ctrl+Backspace</kbd> clear grid |
+| Timetable | <kbd>Ctrl+G</kbd> generate · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> load · <kbd>Ctrl+K</kbd> check clashes · <kbd>Ctrl+Shift+A</kbd> auto-fill |
+| Export | <kbd>Ctrl+E</kbd> Excel · <kbd>Ctrl+Shift+P</kbd> publish (PDF/calendar) · <kbd>Alt+V</kbd> CSV · <kbd>Ctrl+P</kbd> print |
+| View | <kbd>Alt+1</kbd>/<kbd>Alt+2</kbd> shift · <kbd>1</kbd>–<kbd>7</kbd> day · <kbd>Ctrl+F</kbd> search · <kbd>Alt+H</kbd> sidebar · <kbd>F1</kbd> help · <kbd>Esc</kbd> close |
 
 ### API
 
@@ -157,21 +198,27 @@ View: <kbd>Alt+1</kbd>/<kbd>Alt+2</kbd> shift · <kbd>1</kbd>–<kbd>7</kbd> day
 | `POST` | `/api/timetable` | save (atomic, rejects clashes with `409`) |
 | `POST` | `/api/timetable/reset` · `/api/database/reset` | clear / factory reset |
 | `POST` | `/api/timetable/autofill` | fill the remaining sections automatically |
-| `POST` | `/api/export/xlsx` | Excel workbook, one sheet per day |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/instructors[/<id>]` | teachers |
-| `GET`/`POST`/`DELETE` | `/api/buildings[/<id>]` | buildings |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/buildings[/<id>]` | buildings |
 | `POST`/`PUT`/`DELETE` | `/api/rooms[/<id>]` | classrooms |
 | `GET` | `/api/admin/courses` | courses with their sections and teachers |
 | `POST`/`PUT`/`DELETE` | `/api/courses[/<id>]` | courses and course codes |
 | `POST`/`DELETE` | `/api/courses/<id>/sections[/<section>]` | sections |
+| `POST` | `/api/export/xlsx` | Excel workbook, one sheet per day |
+| `GET` | `/api/import/template` | blank import workbook |
+| `POST` | `/api/import/xlsx` | bulk import (multipart `file`) → per-row report |
+| `GET` | `/api/publish/targets` | teachers / sections / rooms that have classes |
+| `POST` | `/api/publish/pdf` | PDF, `scope` = `all` \| `teacher` \| `section` \| `room` |
+| `POST` | `/api/publish/ics` | downloadable `.ics` |
+| `GET` | `/calendar.ics?teacher=…&weeks=…` | live calendar subscription feed |
 | `GET`/`POST` | `/api/settings` | grid preferences |
 
 ---
 
 ## 🔧 Configuration
 
-Everything is optional. Copy [`.env.example`](.env.example) to `.env` next to
-the executable to change any of it.
+Everything is optional. Copy [`.env.example`](.env.example) next to the
+executable as `.env` to change any of it.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -185,29 +232,30 @@ the executable to change any of it.
 
 ---
 
-## 📋 Status of the original project
+## 📋 Where this came from
 
-This is version 2.0. Version 1 was a prototype that could not run outside its
-author's PC: the requirements file was UTF-16 (so `pip install -r` failed), the
-PDF library was loaded from a domain shut down in 2019, "Save to Database"
-always posted an empty list, the SQL insert was string-interpolated (injectable),
-the timetable grid mis-aligned its own time headers after day 1, and clash
-detection compared a cell with itself so it never found anything.
+Version 1 was a prototype that could not run outside its author's PC: the
+requirements file was UTF-16 (so `pip install -r` failed), the PDF library was
+loaded from a domain shut down in 2019, "Save to Database" always posted an
+empty list, the SQL insert was string-interpolated (injectable), the grid
+mis-aligned its own time headers after day 1, and clash detection compared a
+cell with itself so it never found anything.
 
-**34 defects** are catalogued — with the exact cause and fix for each — in
-**[docs/BUGS_AND_FIXES.md](docs/BUGS_AND_FIXES.md)**.
+**34 defects** are catalogued — cause, symptom and fix for each — in
+**[docs/BUGS_AND_FIXES.md](docs/BUGS_AND_FIXES.md)**. Everything since is in the
+**[changelog](CHANGELOG.md)**.
 
 ---
 
 ## 🗺 Roadmap
 
-* Student enrolment editor + Excel/CSV **import** for bulk setup
-* Teacher availability windows ("Dr. X cannot teach before 11:00")
+* Constraint-solver auto-fill (teacher availability windows, "no 3 lectures in a
+  row", minimise gaps) that explains why a section could not be placed
+* Student enrolment editor and per-student timetables
 * Lab sessions spanning several consecutive slots
-* Per-teacher and per-section timetable views and printouts
-* Optimising solver (minimise gaps, balance daily load) on top of auto-fill
-* Multi-campus support, per-user logins and an audit trail
-* Automatic backups of `timetable.db` with one-click restore
+* Multi-user mode: shared Postgres backend, logins, audit trail
+* Automatic timestamped backups of `timetable.db` with one-click restore
+* Signed Windows installers and notarised macOS builds
 
 ---
 

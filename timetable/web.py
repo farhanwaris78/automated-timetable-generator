@@ -24,6 +24,8 @@ from .config import Settings, bundle_dir, load_settings
 from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
 from .exporters import build_workbook, openpyxl_available
+from .importers import build_template, import_workbook
+from .publishing import build_ics, build_pdf, filter_entries
 from .services import Assignment, TimetableService, ValidationError, WEEKDAYS
 
 log = logging.getLogger("timetable")
@@ -303,6 +305,10 @@ def create_app(settings: Settings | None = None) -> Flask:
     def api_create_building():
         return jsonify(catalog().save_building(request.get_json(silent=True) or {})), 201
 
+    @app.put("/api/buildings/<int:building_id>")
+    def api_update_building(building_id: int):
+        return jsonify(catalog().save_building(request.get_json(silent=True) or {}, building_id))
+
     @app.delete("/api/buildings/<int:building_id>")
     def api_delete_building(building_id: int):
         catalog().delete_building(building_id)
@@ -411,6 +417,147 @@ def create_app(settings: Settings | None = None) -> Flask:
             download_name=str(payload.get("filename") or "timetable.xlsx"),
             max_age=0,
         )
+
+    # ---- bulk import (Excel) ---------------------------------------------- #
+    @app.get("/api/import/template")
+    def api_import_template():
+        if not openpyxl_available():
+            return (
+                jsonify({"error": "missing_dependency", "message": "openpyxl is not installed."}),
+                501,
+            )
+        return send_file(
+            io.BytesIO(build_template()),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="timetable-import-template.xlsx",
+            max_age=0,
+        )
+
+    @app.post("/api/import/xlsx")
+    def api_import_xlsx():
+        if not openpyxl_available():
+            return (
+                jsonify({"error": "missing_dependency", "message": "openpyxl is not installed."}),
+                501,
+            )
+        upload = request.files.get("file")
+        data = upload.read() if upload is not None else request.get_data()
+        if not data:
+            raise ValidationError("Choose an .xlsx file to import.")
+        if len(data) > 8 * 1024 * 1024:
+            raise ValidationError("That file is larger than 8 MB.")
+        report = import_workbook(catalog(), data)
+        log.info(
+            "Import finished: %s added, %s updated, %s skipped",
+            report["total_created"], report["total_updated"], report["skipped"],
+        )
+        return jsonify(report)
+
+    # ---- publishing (PDF / iCalendar) ------------------------------------- #
+    def _publish_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        """Entries to publish: the on-screen grid if supplied, else what is saved."""
+        svc = service()
+        raw = payload.get("assignments")
+        entries = svc.describe_assignments(_parse_assignments(raw)) if raw else svc.load_timetable()
+        return filter_entries(
+            entries,
+            teacher=payload.get("teacher") or None,
+            course_id=int(payload["course_id"]) if payload.get("course_id") else None,
+            section=payload.get("section") or None,
+            room_id=int(payload["room_id"]) if payload.get("room_id") else None,
+            shift=str(payload.get("shift") or "all"),
+        )
+
+    @app.get("/api/publish/targets")
+    def api_publish_targets():
+        entries = service().load_timetable()
+        teachers = sorted({str(e.get("instructor") or "Unassigned") for e in entries})
+        sections = sorted(
+            {
+                (int(e["course_id"]), str(e.get("code") or ""), str(e["course_name"]), str(e["section"]))
+                for e in entries
+            },
+            key=lambda item: (item[1], item[3]),
+        )
+        rooms_used = sorted({(int(e["room_id"]), str(e.get("room_label") or "")) for e in entries},
+                            key=lambda item: item[1])
+        return jsonify(
+            {
+                "saved_classes": len(entries),
+                "teachers": teachers,
+                "sections": [
+                    {"course_id": cid, "code": code, "name": name, "section": section}
+                    for cid, code, name, section in sections
+                ],
+                "rooms": [{"id": rid, "label": label} for rid, label in rooms_used],
+            }
+        )
+
+    @app.post("/api/publish/pdf")
+    def api_publish_pdf():
+        payload = request.get_json(silent=True) or {}
+        entries = _publish_entries(payload)
+        if not entries:
+            raise ValidationError("Nothing matches that selection, so there is no PDF to make.")
+        scope = str(payload.get("scope") or "all")
+        if scope not in ("all", "teacher", "section", "room"):
+            raise ValidationError("scope must be one of: all, teacher, section, room.")
+        pdf = build_pdf(
+            entries,
+            service().list_rooms(),
+            scope=scope,
+            days=int(payload.get("days") or max(int(e["day"]) for e in entries)),
+            slots=payload.get("slots") or None,
+            title=str(payload.get("title") or "University Timetable"),
+        )
+        return send_file(
+            io.BytesIO(pdf),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=str(payload.get("filename") or f"timetable-{scope}.pdf"),
+            max_age=0,
+        )
+
+    def _ics_response(entries: list[dict[str, Any]], name: str, weeks: Any, start: Any, download: bool):
+        from datetime import date
+
+        try:
+            first = date.fromisoformat(str(start)) if start else date.today()
+        except ValueError:
+            raise ValidationError("start must be a date in YYYY-MM-DD form.") from None
+        text = build_ics(entries, start_date=first, weeks=int(weeks or 16), calendar_name=name)
+        response = app.response_class(text, mimetype="text/calendar")
+        disposition = "attachment" if download else "inline"
+        safe = "".join(char for char in name if char.isalnum() or char in " -_").strip() or "timetable"
+        response.headers["Content-Disposition"] = f'{disposition}; filename="{safe}.ics"'
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+    @app.get("/calendar.ics")
+    def api_calendar_feed():
+        """Stable subscription URL - students/teachers can add it to any calendar app."""
+        payload = {
+            "teacher": request.args.get("teacher"),
+            "course_id": request.args.get("course_id"),
+            "section": request.args.get("section"),
+            "room_id": request.args.get("room_id"),
+            "shift": request.args.get("shift") or "all",
+        }
+        entries = _publish_entries(payload)
+        name = payload["teacher"] or (
+            f"{payload['section']} timetable" if payload["section"] else "University Timetable"
+        )
+        return _ics_response(entries, name, request.args.get("weeks", 16), request.args.get("start"), False)
+
+    @app.post("/api/publish/ics")
+    def api_publish_ics():
+        payload = request.get_json(silent=True) or {}
+        entries = _publish_entries(payload)
+        if not entries:
+            raise ValidationError("Nothing matches that selection, so there is no calendar to make.")
+        name = str(payload.get("title") or payload.get("teacher") or "University Timetable")
+        return _ics_response(entries, name, payload.get("weeks", 16), payload.get("start"), True)
 
     # ---- legacy routes (kept so old bookmarks/scripts keep working) -------- #
     @app.post("/save-timetable")

@@ -541,3 +541,330 @@ def test_migration_adds_columns_to_an_old_database(tmp_path):
     with upgraded.connect() as conn:
         code = conn.execute(text("SELECT code FROM courses WHERE id = 501")).scalar()
     assert code                     # a code was back-filled, not left blank
+
+
+# ============================================================================ #
+# v2.2 - capacity warnings, Excel import, PDF / iCalendar publishing
+# ============================================================================ #
+from datetime import date  # noqa: E402
+
+from timetable.importers import build_template, import_workbook  # noqa: E402
+from timetable.importers import openpyxl_available as import_openpyxl  # noqa: E402
+from timetable.publishing import (  # noqa: E402
+    PdfCanvas,
+    build_ics,
+    build_pdf,
+    filter_entries,
+    text_width,
+)
+
+
+def _sample_entries():
+    return [
+        {
+            "id": 1, "day": 1, "start_time": "08:30", "end_time": "09:50", "shift": "morning",
+            "room_id": 1, "room_label": "A-101", "course_id": 101, "code": "CS3009",
+            "course_name": "Artificial Intelligence", "section": "A", "color": "#a9d2e1",
+            "instructor": "Mr. Saad Salman", "num_students": 42,
+        },
+        {
+            "id": 2, "day": 3, "start_time": "13:30", "end_time": "14:50", "shift": "evening",
+            "room_id": 2, "room_label": "B-201", "course_id": 102, "code": "CS4001",
+            "course_name": "Machine Learning", "section": "B", "color": "#2b3465",
+            "instructor": "Dr. Aftab Maroof", "num_students": 30,
+        },
+    ]
+
+
+_SAMPLE_ROOMS = [
+    {"id": 1, "room_number": "101", "label": "A-101", "capacity": 60, "room_type": "Classroom"},
+    {"id": 2, "room_number": "201", "label": "B-201", "capacity": 30, "room_type": "Lab"},
+]
+
+
+# ------------------------------ capacity ------------------------------------ #
+def test_capacity_warning_is_raised_but_not_blocking(service):
+    """A too-small room must warn, never stop the user from saving."""
+    from sqlalchemy import insert, select, text as sql_text
+    from timetable.db import enrollments, rooms, students
+
+    with service.engine.begin() as conn:
+        room_id = conn.execute(select(rooms.c.id)).scalar()
+        conn.execute(rooms.update().where(rooms.c.id == room_id).values(capacity=1))
+        roll = conn.execute(select(students.c.roll_number)).scalar()
+        already = conn.execute(
+            select(enrollments.c.roll_number).where(
+                enrollments.c.course_id == 101, enrollments.c.section == "A",
+                enrollments.c.roll_number == roll,
+            )
+        ).first()
+        if not already:
+            conn.execute(insert(enrollments).values(roll_number=roll, course_id=101, section="A"))
+        conn.execute(sql_text("SELECT 1"))
+
+    candidate = Assignment(day=1, start_time="09:00", end_time="10:20", room_id=room_id,
+                           course_id=101, section="A")
+    conflicts = service.check_assignment(candidate)
+    capacity = [c for c in conflicts if c.kind == "capacity"]
+    assert capacity, "an over-full room must produce a capacity conflict"
+    assert capacity[0].severity == "warning"
+    assert not any(c.severity == "error" for c in conflicts)
+
+    result = service.save_timetable([candidate])
+    assert result["ok"] and result["saved"] == 1        # warnings never block a save
+
+
+def test_capacity_warning_survives_the_http_layer(client):
+    from sqlalchemy import select
+    from timetable.db import rooms
+
+    engine = client.application.extensions["engine"]
+    with engine.begin() as conn:
+        room_id = conn.execute(select(rooms.c.id)).scalar()
+        conn.execute(rooms.update().where(rooms.c.id == room_id).values(capacity=1))
+
+    response = client.post("/api/timetable/validate", json={
+        "candidate": {"day": 1, "start_time": "09:00", "end_time": "10:20", "room_id": room_id,
+                      "course_id": 101, "section": "A"},
+        "grid": [],
+    })
+    payload = response.get_json()
+    assert payload["ok"] is True                        # still placeable
+    assert any(c["kind"] == "capacity" for c in payload["conflicts"])
+
+
+# -------------------------------- import ------------------------------------ #
+@pytest.mark.skipif(not import_openpyxl(), reason="openpyxl not installed")
+def test_import_template_has_every_sheet(client):
+    import io as _io
+    from openpyxl import load_workbook
+
+    response = client.get("/api/import/template")
+    assert response.status_code == 200
+    book = load_workbook(_io.BytesIO(response.data))
+    assert {"Teachers", "Buildings", "Rooms", "Courses", "Sections"} <= set(book.sheetnames)
+
+
+@pytest.mark.skipif(not import_openpyxl(), reason="openpyxl not installed")
+def test_import_creates_updates_and_reports_bad_rows(app):
+    import io as _io
+    from openpyxl import load_workbook
+
+    catalog = app.extensions["catalog"]
+    book = load_workbook(_io.BytesIO(build_template()))
+    for sheet in ("Teachers", "Buildings", "Rooms", "Courses", "Sections"):
+        book[sheet].delete_rows(2, book[sheet].max_row)      # drop the examples
+    book["Teachers"].append(["Prof. Test Import", "t.import@uni.edu", "Physics", "evening"])
+    book["Buildings"].append(["Zeta"])
+    book["Rooms"].append(["Z-1", "Zeta", 25, "Lab"])
+    book["Rooms"].append(["", "Zeta", 25, "Lab"])            # invalid: no room number
+    book["Courses"].append(["PH1001", "Quantum Mechanics", "Physics", 4, "#C7E1C0"])
+    book["Sections"].append(["PH1001", "A", "t.import@uni.edu"])
+    book["Sections"].append(["PH1001", "B", "Ghost Teacher"])  # invalid: unknown teacher
+    buffer = _io.BytesIO()
+    book.save(buffer)
+
+    report = import_workbook(catalog, buffer.getvalue())
+    assert report["created"] == {"Teachers": 1, "Buildings": 1, "Rooms": 1, "Courses": 1, "Sections": 1}
+    assert report["skipped"] == 2
+    assert {e["sheet"] for e in report["errors"]} == {"Rooms", "Sections"}
+    assert report["ok"] is False
+
+    # the good rows really landed
+    names = {t["name"] for t in catalog.list_instructors()}
+    assert "Prof. Test Import" in names
+    codes = {c["code"] for c in catalog.list_courses_admin()}
+    assert "PH1001" in codes
+
+    # re-importing the same file updates instead of duplicating
+    again = import_workbook(catalog, buffer.getvalue())
+    assert again["total_created"] == 0
+    assert again["total_updated"] >= 4
+    assert len([t for t in catalog.list_instructors() if t["name"] == "Prof. Test Import"]) == 1
+
+
+@pytest.mark.skipif(not import_openpyxl(), reason="openpyxl not installed")
+def test_import_rejects_a_workbook_without_known_sheets(app):
+    import io as _io
+    from openpyxl import Workbook
+
+    book = Workbook()
+    book.active.title = "Random"
+    buffer = _io.BytesIO()
+    book.save(buffer)
+    with pytest.raises(ValidationError):
+        import_workbook(app.extensions["catalog"], buffer.getvalue())
+
+
+def test_import_rejects_a_non_excel_file(client):
+    response = client.post("/api/import/xlsx", data=b"this is not a spreadsheet",
+                           content_type="application/octet-stream")
+    assert response.status_code == 400
+    assert "Excel" in response.get_json()["message"]
+
+
+def test_import_without_a_file_is_a_clean_400(client):
+    assert client.post("/api/import/xlsx", data=b"").status_code == 400
+
+
+# ------------------------------- publishing ---------------------------------- #
+def test_pdf_writer_produces_a_valid_document():
+    pdf = PdfCanvas()
+    pdf.text(20, 20, "Hello")
+    pdf.new_page()
+    pdf.rect(10, 10, 50, 20, fill=(1, 0, 0))
+    data = pdf.build("Test")
+    assert data.startswith(b"%PDF-1.4")
+    assert data.rstrip().endswith(b"%%EOF")
+    assert data.count(b"/Type /Page ") == 2
+    assert b"startxref" in data
+
+
+def test_text_width_is_font_aware():
+    assert text_width("iii", 10) < text_width("WWW", 10)
+    assert text_width("Hello", 20) == pytest.approx(2 * text_width("Hello", 10))
+
+
+@pytest.mark.parametrize("scope,pages", [("all", 5), ("teacher", 2), ("section", 2), ("room", 2)])
+def test_pdf_scopes_produce_one_page_per_group(scope, pages):
+    data = build_pdf(_sample_entries(), _SAMPLE_ROOMS, scope=scope, days=5)
+    assert data.count(b"/Type /Page ") == pages
+
+
+def test_pdf_handles_an_empty_timetable():
+    assert build_pdf([], _SAMPLE_ROOMS, scope="all").startswith(b"%PDF")
+
+
+def test_pdf_rejects_an_unknown_scope():
+    with pytest.raises(ValueError):
+        build_pdf(_sample_entries(), _SAMPLE_ROOMS, scope="galaxy")
+
+
+def test_ics_is_well_formed_and_repeats_weekly():
+    text = build_ics(_sample_entries(), start_date=date(2026, 1, 5), weeks=12)
+    assert text.startswith("BEGIN:VCALENDAR\r\n") and text.rstrip().endswith("END:VCALENDAR")
+    assert text.count("BEGIN:VEVENT") == 2 == text.count("END:VEVENT")
+    assert "RRULE:FREQ=WEEKLY;COUNT=12" in text
+    # Monday class must start on the Monday of that week, Wednesday two days later
+    assert "DTSTART:20260105T083000" in text
+    assert "DTSTART:20260107T133000" in text
+    assert "\r\n" in text and all(len(line.encode()) <= 75 for line in text.split("\r\n"))
+
+
+def test_ics_escapes_special_characters():
+    entries = _sample_entries()
+    entries[0]["course_name"] = "Maths; Stats, Advanced"
+    assert r"Maths\; Stats\, Advanced" in build_ics(entries)
+
+
+def test_filter_entries_narrows_by_teacher_section_and_room():
+    entries = _sample_entries()
+    assert len(filter_entries(entries, teacher="mr. saad salman")) == 1
+    assert len(filter_entries(entries, course_id=102, section="b")) == 1
+    assert len(filter_entries(entries, room_id=1)) == 1
+    assert len(filter_entries(entries, shift="evening")) == 1
+    assert len(filter_entries(entries)) == 2
+
+
+def test_publish_endpoints_round_trip(client):
+    assignments = [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+        {"day": 3, "start_time": "10:00", "end_time": "11:20", "room_id": 2,
+         "course_id": 102, "section": "A", "shift": "morning"},
+    ]
+    assert client.post("/api/timetable", json={"assignments": assignments}).status_code == 200
+
+    targets = client.get("/api/publish/targets").get_json()
+    assert targets["saved_classes"] == 2
+    assert targets["teachers"] and targets["sections"] and targets["rooms"]
+
+    pdf = client.post("/api/publish/pdf", json={"scope": "teacher", "days": 5})
+    assert pdf.status_code == 200
+    assert pdf.data.startswith(b"%PDF")
+    assert pdf.mimetype == "application/pdf"
+
+    ics = client.get("/calendar.ics?weeks=8")
+    assert ics.status_code == 200
+    assert ics.mimetype == "text/calendar"
+    assert ics.data.count(b"BEGIN:VEVENT") == 2
+    assert b"COUNT=8" in ics.data
+
+    only_one = client.get(f"/calendar.ics?teacher={targets['teachers'][0]}")
+    assert 1 <= only_one.data.count(b"BEGIN:VEVENT") < 3
+
+
+def test_publish_uses_the_unsaved_grid_when_given_one(client):
+    response = client.post("/api/publish/pdf", json={
+        "scope": "all", "days": 1,
+        "assignments": [{"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+                         "course_id": 101, "section": "A", "shift": "morning"}],
+    })
+    assert response.status_code == 200
+    assert client.get("/api/timetable").get_json()["entries"] == []      # nothing was saved
+
+
+def test_publish_rejects_an_empty_selection(client):
+    assert client.post("/api/publish/pdf", json={"teacher": "Nobody At All"}).status_code == 400
+    assert client.post("/api/publish/pdf", json={"scope": "moon"}).status_code == 400
+
+
+# ------------------------------ building CRUD -------------------------------- #
+def test_building_can_be_created_renamed_and_deleted(client):
+    created = client.post("/api/buildings", json={"name": "Zeta Wing"})
+    assert created.status_code == 201
+    building_id = created.get_json()["id"]
+
+    renamed = client.put(f"/api/buildings/{building_id}", json={"name": "Omega Wing"})
+    assert renamed.status_code == 200 and renamed.get_json()["name"] == "Omega Wing"
+
+    assert client.post("/api/buildings", json={"name": "omega wing"}).status_code == 400   # duplicate
+    assert client.delete(f"/api/buildings/{building_id}").status_code == 200
+
+
+def test_building_with_rooms_cannot_be_deleted(client):
+    building_id = client.post("/api/buildings", json={"name": "Delta"}).get_json()["id"]
+    client.post("/api/rooms", json={"room_number": "D-1", "building_name": "Delta", "capacity": 30})
+    response = client.delete(f"/api/buildings/{building_id}")
+    assert response.status_code == 400
+    assert "room" in response.get_json()["message"].lower()
+
+
+# --------------------------- front-end integrity ----------------------------- #
+def _read(*parts) -> str:
+    return (Path(__file__).resolve().parent.parent.joinpath(*parts)).read_text(encoding="utf-8")
+
+
+def test_every_button_action_exists_in_the_controller():
+    """A typo in a data-action would silently produce a dead button."""
+    html = _read("timetable", "templates", "index.html")
+    js = _read("timetable", "static", "app.js")
+    actions = set(re.findall(r'data-action="([A-Za-z]+)"', html))
+    declared = set(re.findall(r"^\s{4}([A-Za-z]+): ", js, re.M))
+    assert actions, "the template should define some actions"
+    assert actions <= declared, f"buttons with no handler: {sorted(actions - declared)}"
+
+
+def test_every_shortcut_action_exists_in_the_controller():
+    js = _read("timetable", "static", "app.js")
+    used = set(re.findall(r'action: "([A-Za-z]+)"', js))
+    declared = set(re.findall(r"^\s{4}([A-Za-z]+): ", js, re.M))
+    assert used <= declared, f"shortcuts with no handler: {sorted(used - declared)}"
+
+
+def test_every_dialog_referenced_by_the_controller_exists():
+    html = _read("timetable", "templates", "index.html")
+    js = _read("timetable", "static", "app.js")
+    opened = set(re.findall(r'openDialog\("#([A-Za-z]+)"\)', js))
+    present = set(re.findall(r'<div id="([A-Za-z]+)" class="dialog', html))
+    assert opened <= present, f"missing dialogs: {sorted(opened - present)}"
+
+
+def test_the_ui_no_longer_uses_blocking_browser_prompts():
+    """Desktop webviews may ignore window.confirm/prompt - we ship our own."""
+    js = "\n".join(
+        line for line in _read("timetable", "static", "app.js").splitlines()
+        if not line.lstrip().startswith(("//", "/*", "*"))
+    )
+    assert "window.confirm(" not in js
+    assert js.count("window.prompt(") <= 1        # only the clipboard fallback

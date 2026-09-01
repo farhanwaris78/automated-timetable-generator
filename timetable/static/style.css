@@ -404,3 +404,84 @@ kbd {
 .shortcut-group dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; margin: 0; align-items: baseline; }
 .shortcut-group dt { white-space: nowrap; }
 .shortcut-group dd { margin: 0; font-size: 13px; color: var(--ink-soft); }
+
+/* ------------------------------------------------------------------------ *
+ * v2.2 additions - capacity warnings, import, publish, confirm dialog
+ * ------------------------------------------------------------------------ */
+.placed.has-warning { box-shadow: 0 0 0 2px var(--warn); }
+
+.cap-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #3a2503;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+#warnCount { user-select: none; }
+
+.form-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.help-list.tight { gap: 5px; font-size: 13px; }
+
+.dialog-narrow { width: min(460px, 100%); }
+
+/* ---- import ---- */
+.import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 10px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface-2, #f7f8fc);
+}
+
+.file-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  font-size: 13px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.import-result { margin-top: 10px; }
+.import-result h4 { margin: 14px 0 6px; font-size: 13px; }
+.import-ok { font-weight: 600; color: var(--ok, #1f7a4d); margin: 0 0 4px; }
+.import-partial { font-weight: 600; color: var(--warn); margin: 0 0 4px; }
+.import-error { font-weight: 600; color: var(--danger); margin: 0; }
+
+/* ---- publish ---- */
+.publish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.publish-link {
+  display: block;
+  margin-top: 8px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #101a33;
+  color: #d8e2ff;
+  font-size: 12px;
+  word-break: break-all;
+}

@@ -4,11 +4,11 @@
 
 | Platform | File | How |
 |---|---|---|
-| Windows 10/11 | `AutomatedTimetableGenerator-2.1.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
-| Windows (no admin rights) | `TimetableGenerator-2.1.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
-| macOS | `TimetableGenerator-2.1.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
-| Ubuntu/Debian | `timetable-generator_2.1.0_amd64.deb` | `sudo apt install ./timetable-generator_2.1.0_amd64.deb` |
-| Any Linux | `TimetableGenerator-2.1.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
+| Windows 10/11 | `AutomatedTimetableGenerator-2.2.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
+| Windows (no admin rights) | `TimetableGenerator-2.2.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
+| macOS | `TimetableGenerator-2.2.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
+| Ubuntu/Debian | `timetable-generator_2.2.0_amd64.deb` | `sudo apt install ./timetable-generator_2.2.0_amd64.deb` |
+| Any Linux | `TimetableGenerator-2.2.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
 
 Nothing else is required — no Python, no SQL Server, no ODBC driver, no
 internet connection.
@@ -49,7 +49,8 @@ app — no SQL, no spreadsheets:
 | **Buildings** | <kbd>Alt</kbd>+<kbd>B</kbd> |
 | **Courses & course codes** | <kbd>Alt</kbd>+<kbd>C</kbd> or *+ Course*. Code (e.g. `CS3009`), title, department, credit hours, colour and a comma-separated list of sections with their teacher. |
 | **Sections** | <kbd>Alt</kbd>+<kbd>S</kbd>, or from the course row in *Manage data*. |
-| **Everything at once** | <kbd>Alt</kbd>+<kbd>M</kbd> opens *Manage data* with searchable Teachers / Classrooms / Courses tables — edit or delete any row. |
+| **Everything at once** | <kbd>Alt</kbd>+<kbd>M</kbd> opens *Manage data* with searchable Teachers / Classrooms / Courses / Buildings tables — edit or delete any row. |
+| **Hundreds of rows at once** | <kbd>Ctrl</kbd>+<kbd>I</kbd> imports a spreadsheet — see *Importing from Excel* below. |
 
 The app refuses destructive edits that would corrupt a schedule: you cannot
 delete a teacher who still has sections, a room or course used by the saved
@@ -78,6 +79,71 @@ still-unscheduled section into the first slot where it causes no room, teacher,
 student or capacity conflict — largest classes first. On the bundled dataset it
 schedules all 45 sections in well under a second. Review the result, adjust by
 hand, then save.
+
+## Room capacity warnings
+
+Every classroom has a number of seats, and every section has an enrolment. When
+you place a class in a room that is too small the app:
+
+* outlines the class in amber and adds a `⚠ 58/40` badge (enrolled / seats);
+* raises a toast explaining the shortfall;
+* counts it in the **“n room(s) too small”** pill on the toolbar.
+
+Click that pill for a **capacity report**: every over-full class, by how much,
+and a suggestion of the smallest rooms that *would* fit it.
+
+Capacity is deliberately a **warning, not an error** — a lecture with 62
+students in a 60-seat room is usually fine, and you may not have a bigger room.
+It never stops you saving. Auto-fill, on the other hand, will not put a class in
+a room that cannot hold it.
+
+## Importing from Excel
+
+Typing a whole department is slow. Instead press <kbd>Ctrl</kbd>+<kbd>I</kbd>
+(*Import Excel*) and:
+
+1. **Download template** — a workbook with a *Read me* sheet and one sheet each
+   for **Teachers, Buildings, Rooms, Courses** and **Sections**.
+2. Fill it in Excel, LibreOffice or Google Sheets (delete the example rows) and
+   save as `.xlsx`.
+3. Choose the file and press **Import file**.
+
+Rules worth knowing:
+
+* Sheets you leave empty are skipped, so you can import only teachers if you like.
+* Existing records are **matched and updated, never duplicated** — by teacher
+  name or email, building name, building + room number, course code, and
+  course + section. Re-importing the same file is safe.
+* Rows are validated exactly as if you had typed them into the dialogs. A bad
+  row is listed with its sheet, row number and reason; every other row still
+  imports.
+* Import order is fixed (Teachers → Buildings → Rooms → Courses → Sections), so
+  a section can reference a teacher and course created earlier in the same file.
+
+## Publishing: PDF and calendar feeds
+
+*Publish…* (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) turns the timetable
+into something you can hand out.
+
+| Choice | Result |
+|---|---|
+| **Master grid** | one landscape page per day, rooms down the side — the noticeboard copy |
+| **One page per teacher** | each teacher's personal week, with their contact hours |
+| **One page per course section** | what a class of students actually needs |
+| **One page per room** | a booking sheet to stick on the door |
+
+Then pick the **data**: the grid on screen (including unsaved changes) or the
+saved timetable, optionally limited to a single teacher, section or room.
+
+* **Download PDF** writes the file straight from the app — no browser print
+  dialog, real vector text, and it looks the same on every machine.
+* **Download .ics** gives a calendar file you can open in any calendar app.
+* **Copy subscription link** copies a live URL such as
+  `http://localhost:5000/calendar.ics?teacher=Dr.%20Ayesha%20Khan&weeks=16`.
+  Paste it into Google Calendar (*Other calendars → From URL*), Outlook
+  (*Add calendar → Subscribe from web*) or Apple Calendar (*File → New Calendar
+  Subscription*). Classes repeat weekly for the number of weeks you choose, and
+  the feed reflects the saved timetable whenever the app is running.
 
 ## Step by step
 
@@ -112,7 +178,8 @@ hand, then save.
 10. **Export**:
     * **Excel** (<kbd>Ctrl</kbd>+<kbd>E</kbd>) — **one worksheet per day**, colour-coded exactly like the
       screen, plus a filterable **Summary** sheet and a **By Teacher** sheet. Both shifts are included.
-    * **PDF** (<kbd>Alt</kbd>+<kbd>P</kbd>) — one page per day, A3 landscape.
+    * **Publish** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) — PDF for the whole grid or per
+      teacher / section / room, plus `.ics` calendar files and a live subscription link.
     * **CSV** (<kbd>Alt</kbd>+<kbd>V</kbd>) and **Print** (<kbd>Ctrl</kbd>+<kbd>P</kbd>).
 
 ### Keyboard shortcuts
@@ -130,7 +197,8 @@ a text box.
 | <kbd>Alt</kbd>+<kbd>C</kbd> | Add course (with its code) |
 | <kbd>Alt</kbd>+<kbd>B</kbd> | Add building |
 | <kbd>Alt</kbd>+<kbd>S</kbd> | Add a section to a course |
-| <kbd>Alt</kbd>+<kbd>M</kbd> | Manage teachers / classrooms / courses |
+| <kbd>Alt</kbd>+<kbd>M</kbd> | Manage teachers / classrooms / courses / buildings |
+| <kbd>Ctrl</kbd>+<kbd>I</kbd> | Import teachers / rooms / courses from Excel |
 
 **Edit**
 
@@ -156,7 +224,7 @@ a text box.
 | Key | Action |
 |---|---|
 | <kbd>Ctrl</kbd>+<kbd>E</kbd> | Export to Excel (one sheet per day) |
-| <kbd>Alt</kbd>+<kbd>P</kbd> | Export to PDF |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> (or <kbd>Alt</kbd>+<kbd>P</kbd>) | Publish: PDF per teacher / section / room + calendar |
 | <kbd>Alt</kbd>+<kbd>V</kbd> | Export to CSV |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print |
 
