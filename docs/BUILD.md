@@ -227,6 +227,9 @@ gh run download            # pulls every artifact into the current folder
 ```bash
 git tag v2.2.0
 git push origin v2.2.0
+
+# the tag already exists? re-push it to re-run the pipeline:
+#   git push --delete origin v2.2.0 && git tag -f v2.2.0 && git push origin v2.2.0
 ```
 
 ---
