@@ -106,18 +106,7 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
+          # Attach the installers to the release that already exists for this
+          # tag, without touching its notes.
           files: artifacts/**/*
-          generate_release_notes: true
-          body: |
-            ## Downloads
-
-            | Platform | File |
-            |---|---|
-            | Windows 10/11 (installer) | `AutomatedTimetableGenerator-*-win64.msi` |
-            | Windows 10/11 (portable)  | `TimetableGenerator-*-windows-x64.zip` |
-            | macOS (Apple Silicon)     | `TimetableGenerator-*-macos-arm64.dmg` |
-            | macOS (Intel)             | `TimetableGenerator-*-macos-x86_64.dmg` |
-            | Linux (Debian/Ubuntu)     | `timetable-generator_*_amd64.deb` |
-            | Linux (any distro)        | `TimetableGenerator-*-linux-x86_64.tar.gz` |
-
-            No installation of Python, ODBC drivers or SQL Server is required.
+          fail_on_unmatched_files: true
