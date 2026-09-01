@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Automated Timetable Generator
+GenericName=Timetable Scheduler
+Comment=Build clash-free university timetables
+Exec=timetable-generator
+Icon=timetable-generator
+Terminal=false
+Categories=Education;Office;Science;
+Keywords=timetable;schedule;university;courses;
+StartupNotify=true

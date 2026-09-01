@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# Testing
+pytest==8.3.5
+
+# Packaging
+pyinstaller==6.11.1
+cx_Freeze==7.2.7      # only used for the Windows .msi and Linux .rpm/.deb

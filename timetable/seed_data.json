@@ -1,0 +1,1990 @@
+{
+  "courses": [
+    {
+      "id": 101,
+      "code": "CS4045",
+      "name": "MLOps",
+      "color": "#A9D2E1",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 1,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 102,
+      "code": "CS3002",
+      "name": "Network Security",
+      "color": "#C1D8E7",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 2,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 103,
+      "code": "CS4001",
+      "name": "Machine Learning",
+      "color": "#8C9FB2",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 3,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 104,
+      "code": "CS3001",
+      "name": "Web Development",
+      "color": "#ADC4D6",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 4,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 105,
+      "code": "CS2005",
+      "name": "Database Management",
+      "color": "#9CA8B9",
+      "department": "Computer Science",
+      "credit_hours": 4,
+      "semester": 5,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 106,
+      "code": "CS4062",
+      "name": "Cybersecurity",
+      "color": "#ADC4D6",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 6,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 107,
+      "code": "CS3009",
+      "name": "Artificial Intelligence",
+      "color": "#8C9FB2",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 7,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 108,
+      "code": "CS4092",
+      "name": "Cloud Computing",
+      "color": "#C1D8E7",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 8,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 109,
+      "code": "CS3006",
+      "name": "Human-Computer Interaction",
+      "color": "#ADC4D6",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 1,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 110,
+      "code": "SE3004",
+      "name": "Software Testing",
+      "color": "#9CA8B9",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 2,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 111,
+      "code": "CS4033",
+      "name": "Mobile App Development",
+      "color": "#A9D2E1",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 3,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 112,
+      "code": "EE4021",
+      "name": "Robotics",
+      "color": "#C1D8E7",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 4,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 113,
+      "code": "DS4011",
+      "name": "Data Warehousing",
+      "color": "#8C9FB2",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 5,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 114,
+      "code": "CS4055",
+      "name": "Game Development",
+      "color": "#C1D8E7",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 6,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 115,
+      "code": "CS4073",
+      "name": "IoT Programming",
+      "color": "#9CA8B9",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 7,
+      "has_lab": 1,
+      "lab_credit_hours": 1
+    },
+    {
+      "id": 116,
+      "code": "CS3061",
+      "name": "E-commerce Technologies",
+      "color": "#A9D2E1",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 8,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 117,
+      "code": "DS4001",
+      "name": "Big Data Analytics",
+      "color": "#C1D8E7",
+      "department": "Computer Science",
+      "credit_hours": 3,
+      "semester": 1,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    },
+    {
+      "id": 118,
+      "code": "EE3005",
+      "name": "Embedded Systems",
+      "color": "#9CA8B9",
+      "department": "Computer Science",
+      "credit_hours": 4,
+      "semester": 2,
+      "has_lab": 0,
+      "lab_credit_hours": 0
+    }
+  ],
+  "course_sections": [
+    {
+      "course_id": 101,
+      "section": "A"
+    },
+    {
+      "course_id": 101,
+      "section": "B"
+    },
+    {
+      "course_id": 102,
+      "section": "A"
+    },
+    {
+      "course_id": 102,
+      "section": "B"
+    },
+    {
+      "course_id": 102,
+      "section": "C"
+    },
+    {
+      "course_id": 103,
+      "section": "A"
+    },
+    {
+      "course_id": 103,
+      "section": "B"
+    },
+    {
+      "course_id": 104,
+      "section": "A"
+    },
+    {
+      "course_id": 104,
+      "section": "B"
+    },
+    {
+      "course_id": 104,
+      "section": "C"
+    },
+    {
+      "course_id": 105,
+      "section": "A"
+    },
+    {
+      "course_id": 105,
+      "section": "B"
+    },
+    {
+      "course_id": 106,
+      "section": "A"
+    },
+    {
+      "course_id": 106,
+      "section": "B"
+    },
+    {
+      "course_id": 106,
+      "section": "C"
+    },
+    {
+      "course_id": 107,
+      "section": "A"
+    },
+    {
+      "course_id": 107,
+      "section": "B"
+    },
+    {
+      "course_id": 107,
+      "section": "C"
+    },
+    {
+      "course_id": 108,
+      "section": "A"
+    },
+    {
+      "course_id": 108,
+      "section": "B"
+    },
+    {
+      "course_id": 108,
+      "section": "C"
+    },
+    {
+      "course_id": 109,
+      "section": "A"
+    },
+    {
+      "course_id": 109,
+      "section": "B"
+    },
+    {
+      "course_id": 110,
+      "section": "A"
+    },
+    {
+      "course_id": 110,
+      "section": "B"
+    },
+    {
+      "course_id": 110,
+      "section": "C"
+    },
+    {
+      "course_id": 111,
+      "section": "A"
+    },
+    {
+      "course_id": 111,
+      "section": "B"
+    },
+    {
+      "course_id": 112,
+      "section": "A"
+    },
+    {
+      "course_id": 112,
+      "section": "B"
+    },
+    {
+      "course_id": 112,
+      "section": "C"
+    },
+    {
+      "course_id": 113,
+      "section": "A"
+    },
+    {
+      "course_id": 113,
+      "section": "B"
+    },
+    {
+      "course_id": 114,
+      "section": "A"
+    },
+    {
+      "course_id": 114,
+      "section": "B"
+    },
+    {
+      "course_id": 114,
+      "section": "C"
+    },
+    {
+      "course_id": 115,
+      "section": "A"
+    },
+    {
+      "course_id": 115,
+      "section": "B"
+    },
+    {
+      "course_id": 116,
+      "section": "A"
+    },
+    {
+      "course_id": 116,
+      "section": "B"
+    },
+    {
+      "course_id": 116,
+      "section": "C"
+    },
+    {
+      "course_id": 117,
+      "section": "A"
+    },
+    {
+      "course_id": 117,
+      "section": "B"
+    },
+    {
+      "course_id": 118,
+      "section": "A"
+    },
+    {
+      "course_id": 118,
+      "section": "B"
+    }
+  ],
+  "instructors": [
+    {
+      "id": 111,
+      "name": "Dr. Hammad Majeed",
+      "email": "hmajeed@university.edu",
+      "department": "Computer Science",
+      "shift": "evening"
+    },
+    {
+      "id": 211,
+      "name": "Dr. Kashif Munir",
+      "email": "kmunir@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 322,
+      "name": "Dr. Aftab Ahmed Maroof",
+      "email": "amaroof@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 433,
+      "name": "Dr. Muhammad Aleem",
+      "email": "maleem@university.edu",
+      "department": "Computer Science",
+      "shift": "both"
+    },
+    {
+      "id": 523,
+      "name": "Dr. Muhammad Arshad Islam",
+      "email": "mislam@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 612,
+      "name": "Dr. Ahmad Raza Shahid",
+      "email": "ashahid@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 765,
+      "name": "Dr. Ejaz Ahmed",
+      "email": "eahmed@university.edu",
+      "department": "Computer Science",
+      "shift": "both"
+    },
+    {
+      "id": 834,
+      "name": "Dr. Noreen Jamil",
+      "email": "njamil@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 936,
+      "name": "Dr. Labiba Fahad",
+      "email": "lfahad@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 109,
+      "name": "Dr. Akhtar Jamil",
+      "email": "ajamil@university.edu",
+      "department": "Computer Science",
+      "shift": "both"
+    },
+    {
+      "id": 113,
+      "name": "Dr. Imran Ashraf",
+      "email": "iashraf@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 128,
+      "name": "Dr. Amna Basharat",
+      "email": "abasharat@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 139,
+      "name": "Dr. Adnan Tariq",
+      "email": "atariq@university.edu",
+      "department": "Computer Science",
+      "shift": "both"
+    },
+    {
+      "id": 145,
+      "name": "Dr. Faisal Cheema",
+      "email": "fcheema@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 156,
+      "name": "Dr. Mehreen Alam",
+      "email": "malam@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 163,
+      "name": "Ms. Noor ul Ain",
+      "email": "nain@university.edu",
+      "department": "Computer Science",
+      "shift": "evening"
+    },
+    {
+      "id": 172,
+      "name": "Ms. Sidra Khalid",
+      "email": "skhalid@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 189,
+      "name": "Mr. Shams Farooq",
+      "email": "sfarooq@university.edu",
+      "department": "Computer Science",
+      "shift": "morning"
+    },
+    {
+      "id": 190,
+      "name": "Ms. Ifrah Qaiser",
+      "email": "iqaiser@university.edu",
+      "department": "Software Engineering",
+      "shift": "both"
+    },
+    {
+      "id": 204,
+      "name": "Mr. Shehreyar Rashid",
+      "email": "srashid@university.edu",
+      "department": "Software Engineering",
+      "shift": "morning"
+    },
+    {
+      "id": 216,
+      "name": "Mr. Shoaib Mehboob",
+      "email": "smehboob@university.edu",
+      "department": "Software Engineering",
+      "shift": "morning"
+    },
+    {
+      "id": 228,
+      "name": "Mr. Saad Salman",
+      "email": "ssalman@university.edu",
+      "department": "Software Engineering",
+      "shift": "both"
+    },
+    {
+      "id": 239,
+      "name": "Mr. Rohail Gulbaz",
+      "email": "rgulbaz@university.edu",
+      "department": "Software Engineering",
+      "shift": "morning"
+    },
+    {
+      "id": 243,
+      "name": "Mr. Owais Idrees",
+      "email": "oidrees@university.edu",
+      "department": "Electrical Engineering",
+      "shift": "morning"
+    },
+    {
+      "id": 254,
+      "name": "Ms. Marium Hida",
+      "email": "mhida@university.edu",
+      "department": "Electrical Engineering",
+      "shift": "both"
+    },
+    {
+      "id": 265,
+      "name": "Mr. Majid Hussain",
+      "email": "mhussain@university.edu",
+      "department": "Electrical Engineering",
+      "shift": "morning"
+    },
+    {
+      "id": 277,
+      "name": "Mr. Muhammad Almas Khan",
+      "email": "mkhan@university.edu",
+      "department": "Electrical Engineering",
+      "shift": "morning"
+    }
+  ],
+  "courses_taught_by": [
+    {
+      "instructor_id": 111,
+      "course_id": 101,
+      "section": "A"
+    },
+    {
+      "instructor_id": 111,
+      "course_id": 101,
+      "section": "B"
+    },
+    {
+      "instructor_id": 612,
+      "course_id": 102,
+      "section": "A"
+    },
+    {
+      "instructor_id": 190,
+      "course_id": 102,
+      "section": "B"
+    },
+    {
+      "instructor_id": 211,
+      "course_id": 102,
+      "section": "C"
+    },
+    {
+      "instructor_id": 228,
+      "course_id": 103,
+      "section": "A"
+    },
+    {
+      "instructor_id": 936,
+      "course_id": 103,
+      "section": "B"
+    },
+    {
+      "instructor_id": 113,
+      "course_id": 104,
+      "section": "A"
+    },
+    {
+      "instructor_id": 113,
+      "course_id": 104,
+      "section": "B"
+    },
+    {
+      "instructor_id": 163,
+      "course_id": 104,
+      "section": "C"
+    },
+    {
+      "instructor_id": 765,
+      "course_id": 105,
+      "section": "A"
+    },
+    {
+      "instructor_id": 765,
+      "course_id": 105,
+      "section": "B"
+    },
+    {
+      "instructor_id": 523,
+      "course_id": 106,
+      "section": "A"
+    },
+    {
+      "instructor_id": 523,
+      "course_id": 106,
+      "section": "B"
+    },
+    {
+      "instructor_id": 145,
+      "course_id": 106,
+      "section": "C"
+    },
+    {
+      "instructor_id": 228,
+      "course_id": 107,
+      "section": "A"
+    },
+    {
+      "instructor_id": 322,
+      "course_id": 107,
+      "section": "B"
+    },
+    {
+      "instructor_id": 243,
+      "course_id": 107,
+      "section": "C"
+    },
+    {
+      "instructor_id": 433,
+      "course_id": 108,
+      "section": "A"
+    },
+    {
+      "instructor_id": 523,
+      "course_id": 108,
+      "section": "B"
+    },
+    {
+      "instructor_id": 433,
+      "course_id": 108,
+      "section": "C"
+    },
+    {
+      "instructor_id": 128,
+      "course_id": 109,
+      "section": "A"
+    },
+    {
+      "instructor_id": 128,
+      "course_id": 109,
+      "section": "B"
+    },
+    {
+      "instructor_id": 172,
+      "course_id": 110,
+      "section": "A"
+    },
+    {
+      "instructor_id": 172,
+      "course_id": 110,
+      "section": "B"
+    },
+    {
+      "instructor_id": 172,
+      "course_id": 110,
+      "section": "C"
+    },
+    {
+      "instructor_id": 228,
+      "course_id": 111,
+      "section": "A"
+    },
+    {
+      "instructor_id": 243,
+      "course_id": 111,
+      "section": "B"
+    },
+    {
+      "instructor_id": 265,
+      "course_id": 112,
+      "section": "A"
+    },
+    {
+      "instructor_id": 139,
+      "course_id": 112,
+      "section": "B"
+    },
+    {
+      "instructor_id": 189,
+      "course_id": 112,
+      "section": "C"
+    },
+    {
+      "instructor_id": 254,
+      "course_id": 113,
+      "section": "A"
+    },
+    {
+      "instructor_id": 216,
+      "course_id": 113,
+      "section": "B"
+    },
+    {
+      "instructor_id": 204,
+      "course_id": 114,
+      "section": "A"
+    },
+    {
+      "instructor_id": 204,
+      "course_id": 114,
+      "section": "B"
+    },
+    {
+      "instructor_id": 277,
+      "course_id": 114,
+      "section": "C"
+    },
+    {
+      "instructor_id": 156,
+      "course_id": 115,
+      "section": "A"
+    },
+    {
+      "instructor_id": 145,
+      "course_id": 115,
+      "section": "B"
+    },
+    {
+      "instructor_id": 109,
+      "course_id": 116,
+      "section": "A"
+    },
+    {
+      "instructor_id": 109,
+      "course_id": 116,
+      "section": "B"
+    },
+    {
+      "instructor_id": 612,
+      "course_id": 116,
+      "section": "C"
+    },
+    {
+      "instructor_id": 139,
+      "course_id": 117,
+      "section": "A"
+    },
+    {
+      "instructor_id": 239,
+      "course_id": 117,
+      "section": "B"
+    },
+    {
+      "instructor_id": 189,
+      "course_id": 118,
+      "section": "A"
+    },
+    {
+      "instructor_id": 189,
+      "course_id": 118,
+      "section": "B"
+    }
+  ],
+  "buildings": [
+    {
+      "id": 1,
+      "name": "A"
+    },
+    {
+      "id": 2,
+      "name": "B"
+    },
+    {
+      "id": 3,
+      "name": "C"
+    }
+  ],
+  "rooms": [
+    {
+      "id": 1,
+      "room_number": "108",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 2,
+      "room_number": "211",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 3,
+      "room_number": "301",
+      "building_id": 1,
+      "capacity": 40,
+      "room_type": "Lab"
+    },
+    {
+      "id": 4,
+      "room_number": "302",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 5,
+      "room_number": "303",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 6,
+      "room_number": "305",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 7,
+      "room_number": "310",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 8,
+      "room_number": "311",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 9,
+      "room_number": "314",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 10,
+      "room_number": "315",
+      "building_id": 1,
+      "capacity": 40,
+      "room_type": "Lab"
+    },
+    {
+      "id": 11,
+      "room_number": "316",
+      "building_id": 1,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 12,
+      "room_number": "130",
+      "building_id": 2,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 13,
+      "room_number": "227",
+      "building_id": 2,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 14,
+      "room_number": "229",
+      "building_id": 2,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 15,
+      "room_number": "230",
+      "building_id": 2,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 16,
+      "room_number": "110",
+      "building_id": 3,
+      "capacity": 120,
+      "room_type": "Hall"
+    },
+    {
+      "id": 17,
+      "room_number": "301",
+      "building_id": 3,
+      "capacity": 40,
+      "room_type": "Lab"
+    },
+    {
+      "id": 18,
+      "room_number": "302",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 19,
+      "room_number": "303",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 20,
+      "room_number": "304",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 21,
+      "room_number": "305",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 22,
+      "room_number": "307",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 23,
+      "room_number": "308",
+      "building_id": 3,
+      "capacity": 40,
+      "room_type": "Lab"
+    },
+    {
+      "id": 24,
+      "room_number": "309",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 25,
+      "room_number": "310",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 26,
+      "room_number": "311",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 27,
+      "room_number": "401",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 28,
+      "room_number": "402",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 29,
+      "room_number": "403",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 30,
+      "room_number": "404",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 31,
+      "room_number": "405",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 32,
+      "room_number": "406",
+      "building_id": 3,
+      "capacity": 40,
+      "room_type": "Lab"
+    },
+    {
+      "id": 33,
+      "room_number": "407",
+      "building_id": 3,
+      "capacity": 120,
+      "room_type": "Hall"
+    },
+    {
+      "id": 34,
+      "room_number": "408",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 35,
+      "room_number": "409",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    },
+    {
+      "id": 36,
+      "room_number": "410",
+      "building_id": 3,
+      "capacity": 60,
+      "room_type": "Classroom"
+    }
+  ],
+  "students": [
+    {
+      "roll_number": "20I-0546",
+      "name": "Muhammad Ali",
+      "parent_section": "CS-A",
+      "degree": "CS",
+      "batch": 20,
+      "gender": "male",
+      "email": "m.ali@gmail.com",
+      "date_of_birth": "2002-04-01",
+      "cnic": "4210197475887",
+      "mobile_number": "+92 3319409717",
+      "blood_group": "A+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "20I-0547",
+      "name": "Sara Ahmed",
+      "parent_section": "CS-B",
+      "degree": "CS",
+      "batch": 20,
+      "gender": "female",
+      "email": "s.ahmed@gmail.com",
+      "date_of_birth": "2002-06-15",
+      "cnic": "4210197475888",
+      "mobile_number": "+92 3329409718",
+      "blood_group": "B+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "20I-0548",
+      "name": "Ayesha Khan",
+      "parent_section": "CS-C",
+      "degree": "CS",
+      "batch": 20,
+      "gender": "female",
+      "email": "a.khan@gmail.com",
+      "date_of_birth": "2002-07-22",
+      "cnic": "4210197475889",
+      "mobile_number": "+92 3339409719",
+      "blood_group": "O+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "20I-0549",
+      "name": "Osama Zafar",
+      "parent_section": "CS-D",
+      "degree": "CS",
+      "batch": 20,
+      "gender": "male",
+      "email": "o.zafar@gmail.com",
+      "date_of_birth": "2002-03-30",
+      "cnic": "4210197475890",
+      "mobile_number": "+92 3349409720",
+      "blood_group": "AB+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "20I-0550",
+      "name": "Ahmed Bilal",
+      "parent_section": "CS-E",
+      "degree": "CS",
+      "batch": 20,
+      "gender": "male",
+      "email": "a.bilal@gmail.com",
+      "date_of_birth": "2002-05-25",
+      "cnic": "4210197475891",
+      "mobile_number": "+92 3359409721",
+      "blood_group": "A-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "20I-0551",
+      "name": "Zara Iqbal",
+      "parent_section": "CS-F",
+      "degree": "CS",
+      "batch": 20,
+      "gender": "female",
+      "email": "z.iqbal@gmail.com",
+      "date_of_birth": "2002-08-10",
+      "cnic": "4210197475892",
+      "mobile_number": "+92 3369409722",
+      "blood_group": "B-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "21I-0552",
+      "name": "Faisal Khan",
+      "parent_section": "CS-A",
+      "degree": "CS",
+      "batch": 21,
+      "gender": "male",
+      "email": "f.khan@gmail.com",
+      "date_of_birth": "2003-01-15",
+      "cnic": "4210197475893",
+      "mobile_number": "+92 3379409723",
+      "blood_group": "O-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "21I-0553",
+      "name": "Hania Amir",
+      "parent_section": "CS-B",
+      "degree": "CS",
+      "batch": 21,
+      "gender": "female",
+      "email": "h.amir@gmail.com",
+      "date_of_birth": "2003-11-20",
+      "cnic": "4210197475894",
+      "mobile_number": "+92 3389409724",
+      "blood_group": "AB-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "21I-0554",
+      "name": "Ibrahim Ali",
+      "parent_section": "CS-C",
+      "degree": "CS",
+      "batch": 21,
+      "gender": "male",
+      "email": "i.ali@gmail.com",
+      "date_of_birth": "2003-09-05",
+      "cnic": "4210197475895",
+      "mobile_number": "+92 3399409725",
+      "blood_group": "A+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "21I-0555",
+      "name": "Saima Aslam",
+      "parent_section": "CS-D",
+      "degree": "CS",
+      "batch": 21,
+      "gender": "female",
+      "email": "s.aslam@gmail.com",
+      "date_of_birth": "2003-12-30",
+      "cnic": "4210197475896",
+      "mobile_number": "+92 3409409726",
+      "blood_group": "B+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "21I-0556",
+      "name": "Ali Raza",
+      "parent_section": "CS-E",
+      "degree": "CS",
+      "batch": 21,
+      "gender": "male",
+      "email": "ali.raza@gmail.com",
+      "date_of_birth": "2003-02-19",
+      "cnic": "4210197475897",
+      "mobile_number": "+92 3419409727",
+      "blood_group": "O+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "21I-0557",
+      "name": "Noor Fatima",
+      "parent_section": "CS-F",
+      "degree": "CS",
+      "batch": 21,
+      "gender": "female",
+      "email": "n.fatima@gmail.com",
+      "date_of_birth": "2003-04-27",
+      "cnic": "4210197475898",
+      "mobile_number": "+92 3429409728",
+      "blood_group": "AB+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "22I-0558",
+      "name": "Usman Ghani",
+      "parent_section": "CS-A",
+      "degree": "CS",
+      "batch": 22,
+      "gender": "male",
+      "email": "u.ghani@gmail.com",
+      "date_of_birth": "2004-06-16",
+      "cnic": "4210197475899",
+      "mobile_number": "+92 3439409729",
+      "blood_group": "A-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "22I-0559",
+      "name": "Rabia Basri",
+      "parent_section": "CS-B",
+      "degree": "CS",
+      "batch": 22,
+      "gender": "female",
+      "email": "r.basri@gmail.com",
+      "date_of_birth": "2004-10-11",
+      "cnic": "4210197475900",
+      "mobile_number": "+92 3449409730",
+      "blood_group": "B-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "22I-0560",
+      "name": "Kamran Malik",
+      "parent_section": "CS-C",
+      "degree": "CS",
+      "batch": 22,
+      "gender": "male",
+      "email": "k.malik@gmail.com",
+      "date_of_birth": "2004-08-23",
+      "cnic": "4210197475901",
+      "mobile_number": "+92 3459409731",
+      "blood_group": "O-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "22I-0561",
+      "name": "Uzma Kardar",
+      "parent_section": "CS-D",
+      "degree": "CS",
+      "batch": 22,
+      "gender": "female",
+      "email": "u.kardar@gmail.com",
+      "date_of_birth": "2004-07-14",
+      "cnic": "4210197475902",
+      "mobile_number": "+92 3469409732",
+      "blood_group": "AB-",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "22I-0562",
+      "name": "Tahir Mehmood",
+      "parent_section": "CS-E",
+      "degree": "CS",
+      "batch": 22,
+      "gender": "male",
+      "email": "t.mehmood@gmail.com",
+      "date_of_birth": "2004-03-08",
+      "cnic": "4210197475903",
+      "mobile_number": "+92 3479409733",
+      "blood_group": "A+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "22I-0563",
+      "name": "Saba Qamar",
+      "parent_section": "CS-F",
+      "degree": "CS",
+      "batch": 22,
+      "gender": "female",
+      "email": "s.qamar@gmail.com",
+      "date_of_birth": "2004-05-21",
+      "cnic": "4210197475904",
+      "mobile_number": "+92 3489409734",
+      "blood_group": "B+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "23I-0564",
+      "name": "Junaid Jamshed",
+      "parent_section": "CS-A",
+      "degree": "CS",
+      "batch": 23,
+      "gender": "male",
+      "email": "j.jamshed@gmail.com",
+      "date_of_birth": "2005-01-01",
+      "cnic": "4210197475905",
+      "mobile_number": "+92 3499409735",
+      "blood_group": "O+",
+      "nationality": "Pakistani"
+    },
+    {
+      "roll_number": "23I-0565",
+      "name": "Nadia Hussain",
+      "parent_section": "CS-B",
+      "degree": "CS",
+      "batch": 23,
+      "gender": "female",
+      "email": "n.hussain@gmail.com",
+      "date_of_birth": "2005-02-28",
+      "cnic": "4210197475906",
+      "mobile_number": "+92 3509409736",
+      "blood_group": "AB+",
+      "nationality": "Pakistani"
+    }
+  ],
+  "enrollments": [
+    {
+      "roll_number": "20I-0546",
+      "course_id": 101,
+      "section": "A",
+      "enrollment_date": "2023-01-15"
+    },
+    {
+      "roll_number": "20I-0546",
+      "course_id": 102,
+      "section": "A",
+      "enrollment_date": "2023-01-15"
+    },
+    {
+      "roll_number": "20I-0546",
+      "course_id": 108,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0546",
+      "course_id": 109,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0546",
+      "course_id": 110,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0546",
+      "course_id": 114,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 102,
+      "section": "B",
+      "enrollment_date": "2023-01-15"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 104,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 109,
+      "section": "B",
+      "enrollment_date": "2023-01-16"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 110,
+      "section": "C",
+      "enrollment_date": "2023-01-17"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 111,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 114,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 115,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0547",
+      "course_id": 116,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 103,
+      "section": "B",
+      "enrollment_date": "2023-01-15"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 104,
+      "section": "B",
+      "enrollment_date": "2023-01-16"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 106,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 108,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 114,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 115,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0548",
+      "course_id": 116,
+      "section": "C",
+      "enrollment_date": "2023-01-16"
+    },
+    {
+      "roll_number": "20I-0549",
+      "course_id": 101,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0549",
+      "course_id": 106,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0549",
+      "course_id": 107,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0549",
+      "course_id": 110,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0549",
+      "course_id": 112,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0550",
+      "course_id": 102,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0550",
+      "course_id": 103,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0550",
+      "course_id": 107,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0550",
+      "course_id": 112,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0550",
+      "course_id": 114,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0551",
+      "course_id": 101,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0551",
+      "course_id": 107,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0551",
+      "course_id": 108,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0551",
+      "course_id": 109,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "20I-0551",
+      "course_id": 110,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0552",
+      "course_id": 102,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0552",
+      "course_id": 104,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0552",
+      "course_id": 106,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0552",
+      "course_id": 110,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0553",
+      "course_id": 105,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0553",
+      "course_id": 106,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0553",
+      "course_id": 112,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0553",
+      "course_id": 116,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0554",
+      "course_id": 102,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0554",
+      "course_id": 113,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0554",
+      "course_id": 114,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0554",
+      "course_id": 115,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0554",
+      "course_id": 118,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0555",
+      "course_id": 102,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0555",
+      "course_id": 106,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0555",
+      "course_id": 107,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0555",
+      "course_id": 113,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0556",
+      "course_id": 104,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0556",
+      "course_id": 106,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0556",
+      "course_id": 110,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0556",
+      "course_id": 112,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0556",
+      "course_id": 116,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0557",
+      "course_id": 106,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0557",
+      "course_id": 109,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0557",
+      "course_id": 110,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0557",
+      "course_id": 112,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "21I-0557",
+      "course_id": 115,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0558",
+      "course_id": 105,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0558",
+      "course_id": 108,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0558",
+      "course_id": 109,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0558",
+      "course_id": 116,
+      "section": "A",
+      "enrollment_date": "2023-01-12"
+    },
+    {
+      "roll_number": "22I-0558",
+      "course_id": 117,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0558",
+      "course_id": 118,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0559",
+      "course_id": 102,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0559",
+      "course_id": 112,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0559",
+      "course_id": 114,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0559",
+      "course_id": 116,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0560",
+      "course_id": 102,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0560",
+      "course_id": 104,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0560",
+      "course_id": 106,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0560",
+      "course_id": 107,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0560",
+      "course_id": 117,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0561",
+      "course_id": 101,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0561",
+      "course_id": 102,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0561",
+      "course_id": 105,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0561",
+      "course_id": 106,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0561",
+      "course_id": 112,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0562",
+      "course_id": 107,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0562",
+      "course_id": 110,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0562",
+      "course_id": 112,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0562",
+      "course_id": 113,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0562",
+      "course_id": 118,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0563",
+      "course_id": 103,
+      "section": "B",
+      "enrollment_date": "2023-01-15"
+    },
+    {
+      "roll_number": "22I-0563",
+      "course_id": 104,
+      "section": "B",
+      "enrollment_date": "2023-01-15"
+    },
+    {
+      "roll_number": "22I-0563",
+      "course_id": 105,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0563",
+      "course_id": 109,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0563",
+      "course_id": 114,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "22I-0563",
+      "course_id": 117,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0564",
+      "course_id": 105,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0564",
+      "course_id": 110,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0564",
+      "course_id": 112,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0564",
+      "course_id": 116,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0564",
+      "course_id": 118,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 101,
+      "section": "A",
+      "enrollment_date": "2023-01-18"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 103,
+      "section": "A",
+      "enrollment_date": "2023-01-18"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 105,
+      "section": "B",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 107,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 115,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 116,
+      "section": "C",
+      "enrollment_date": "2024-08-26"
+    },
+    {
+      "roll_number": "23I-0565",
+      "course_id": 117,
+      "section": "A",
+      "enrollment_date": "2024-08-26"
+    }
+  ]
+}
