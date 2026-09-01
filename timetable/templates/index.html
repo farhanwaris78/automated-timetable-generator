@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>Automated Timetable Generator</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script defer src="{{ url_for('static', filename='vendor/html2pdf.bundle.min.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+
+<body>
+  <a class="skip-link" href="#timetableContainer">Skip to timetable</a>
+
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">TT</span>
+      <div>
+        <h1>Automated Timetable Generator</h1>
+        <p class="brand-sub">Clash-free scheduling for universities &middot; v{{ app_version }}</p>
+      </div>
+    </div>
+    <div class="header-status">
+      <span id="dbStatus" class="pill pill-muted" title="Database status">Connecting&hellip;</span>
+      <button type="button" id="helpButton" class="btn btn-ghost" aria-haspopup="dialog">Help</button>
+    </div>
+  </header>
+
+  {% if db_error %}
+  <div class="banner banner-error" role="alert">
+    <strong>Database unavailable.</strong> {{ db_error }}
+    <span class="banner-hint">The app is running in read-only mode. Check your <code>.env</code> file or run
+      <code>timetable-generator --reset-database</code>.</span>
+  </div>
+  {% endif %}
+
+  <main class="layout">
+    <!-- ------------------------------ sidebar ------------------------------ -->
+    <aside id="sidebar" class="sidebar" aria-label="Course catalogue">
+      <div class="sidebar-head">
+        <h2>Courses</h2>
+        <span id="courseCount" class="chip-count">0</span>
+      </div>
+      <label class="visually-hidden" for="courseSearch">Search courses</label>
+      <input type="search" id="courseSearch" class="search" placeholder="Search course, section or teacher&hellip;"
+        autocomplete="off">
+      <div class="sidebar-filters">
+        <label><input type="checkbox" id="hidePlaced"> Hide already scheduled</label>
+      </div>
+      <div id="coursesList" class="courses-list" aria-live="polite">
+        <p class="empty">Loading courses&hellip;</p>
+      </div>
+      <p class="sidebar-foot">Drag a course onto a free slot. Drag it back here to unschedule.</p>
+    </aside>
+
+    <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true"
+      title="Show/hide the course list">&#10094;</button>
+
+    <!-- ------------------------------ workspace ---------------------------- -->
+    <section class="workspace">
+      <form id="setupForm" class="panel setup" autocomplete="off">
+        <div class="field">
+          <label for="totalDays">Days / week</label>
+          <input type="number" id="totalDays" min="1" max="7" value="5" required>
+        </div>
+        <div class="field">
+          <label for="startTime">Day starts</label>
+          <input type="time" id="startTime" value="08:30" required>
+        </div>
+        <div class="field">
+          <label for="endTime">Day ends</label>
+          <input type="time" id="endTime" value="17:15" required>
+        </div>
+        <div class="field">
+          <label for="classDuration">Class (min)</label>
+          <input type="number" id="classDuration" min="15" max="240" step="5" value="80" required>
+        </div>
+        <div class="field">
+          <label for="breakTime">Break (min)</label>
+          <input type="number" id="breakTime" min="0" max="120" step="5" value="10" required>
+        </div>
+        <div class="field">
+          <label for="buildingFilter">Building</label>
+          <select id="buildingFilter">
+            <option value="">All buildings</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="roomLimit">Max rooms</label>
+          <input type="number" id="roomLimit" min="1" max="200" value="12" required>
+        </div>
+        <div class="setup-actions">
+          <button type="submit" id="generateTimetable" class="btn btn-primary">Generate grid</button>
+        </div>
+      </form>
+
+      <div class="panel toolbar">
+        <div class="toolbar-group">
+          <button type="button" id="saveToDatabase" class="btn btn-primary">Save to database</button>
+          <button type="button" id="loadFromDatabase" class="btn">Load saved</button>
+          <button type="button" id="validateAll" class="btn">Check all clashes</button>
+        </div>
+        <div class="toolbar-group">
+          <button type="button" id="exportPdf" class="btn">Export PDF</button>
+          <button type="button" id="exportCsv" class="btn">Export CSV</button>
+          <button type="button" id="printView" class="btn">Print</button>
+        </div>
+        <div class="toolbar-group">
+          <button type="button" id="clearGrid" class="btn btn-warn">Clear grid</button>
+          <button type="button" id="resetTimetable" class="btn btn-danger">Reset saved timetable</button>
+        </div>
+        <div class="toolbar-meta">
+          <span id="placedCount" class="pill pill-muted">0 scheduled</span>
+          <span id="conflictCount" class="pill pill-ok">No clashes</span>
+        </div>
+      </div>
+
+      <div id="dayTabs" class="day-tabs" role="tablist" aria-label="Days"></div>
+
+      <div id="timetableContainer" class="timetable-container">
+        <div class="placeholder">
+          <h3>No grid yet</h3>
+          <p>Choose your working hours above and press <strong>Generate grid</strong> to begin.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ------------------------------- dialogs -------------------------------- -->
+  <div id="courseDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="courseDialogTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="courseDialogTitle">Class details</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div id="courseDialogBody" class="dialog-body"></div>
+    </div>
+  </div>
+
+  <div id="helpDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="helpDialogTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="helpDialogTitle">How to use</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <ol class="help-list">
+          <li><strong>Generate grid</strong> - set working hours, class length and break, then build the week.</li>
+          <li><strong>Drag &amp; drop</strong> a course from the left panel into a room/time cell.</li>
+          <li>The server checks <strong>room, instructor, student and capacity clashes</strong> on every drop and
+            explains exactly who clashes.</li>
+          <li>Click a scheduled class to see the instructor, department and full student roster.</li>
+          <li><strong>Save to database</strong> stores the week; <strong>Load saved</strong> brings it back on the next
+            launch.</li>
+          <li>Export the finished week as <strong>PDF</strong> or <strong>CSV</strong>.</li>
+        </ol>
+        <p class="muted">Keyboard: <kbd>Esc</kbd> closes dialogs, <kbd>Delete</kbd> removes the selected class,
+          <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <div id="printArea" class="print-area" aria-hidden="true"></div>
+</body>
+
+</html>

@@ -1,17 +1,33 @@
-# Ignore virtual environments
+# Virtual environments
 venv/
+.venv/
+env/
+
+# Secrets / local config
 .env
 
-# Ignore cache and compiled files
+# Python caches
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Ignore system files
+# Build output
+build/
+dist/
+*.spec.bak
+packaging/version_info.txt
+packaging/icon.iconset/
+
+# Local databases and logs
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# OS noise
 .DS_Store
 Thumbs.db
-
-# Ignore environment files
-.env
-*.sqlite3
-
