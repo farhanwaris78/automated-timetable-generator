@@ -196,7 +196,7 @@ def _parse_date(value: Any) -> date | None:
 
 
 def seed_payload() -> dict[str, list[dict[str, Any]]]:
-    """Load the bundled demo dataset (FAST-NUCES sample)."""
+    """Load the bundled demo dataset (a generic sample university)."""
     for candidate in (
         bundle_dir() / "seed_data.json",
         bundle_dir() / "timetable" / "seed_data.json",

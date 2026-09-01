@@ -44,14 +44,14 @@ students ──< enrollments >────┘
   timetable rows.
 * **Every write is parameterised** and wrapped in a transaction.
 
-## Labs and semesters (2.3)
+## Labs and semesters
 
 A **class** is a `(course, section, kind)` triple: the lecture and the lab of one
 section are scheduled separately but belong to the same students, so they may
 never overlap. `courses.semester` groups sections into student batches — a
 `(semester, section)` pair can only be in one room at a time, which is the
 *semester clash* rule. All four columns were added by additive migrations, so an
-existing database upgrades in place and every pre-2.3 entry reads as `theory`.
+existing database upgrades in place and every pre-existing entry reads as `theory`.
 
 ## Seed data
 

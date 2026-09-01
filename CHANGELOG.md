@@ -1,6 +1,13 @@
 # Changelog
 
-## 2.3.0 — labs, semesters, and a report of what is missing
+## 2.0.0 — first public release
+
+A complete rewrite of the original prototype into a zero-configuration,
+cross-platform desktop application, with **34 defects** from the prototype fixed
+(cause, symptom and fix for each in `docs/BUGS_AND_FIXES.md`) and six more found
+and fixed while building the features below.
+
+### Labs, semesters, and a report of what is missing
 
 **Labs are first-class classes**
 * The course editor gained **“This course has a lab”** with its own
@@ -50,9 +57,9 @@
   `courses.semester`, `timetable_entries.kind` — existing databases upgrade in
   place on first launch, with every old entry treated as `theory`
 * The Excel import template carries the three new course columns
-* Test suite: 83 → **94 tests**, all green
+* Test suite: **94 tests**, all green
 
-## 2.2.0 — capacity warnings, Excel import, publishing (PDF & calendar)
+### Capacity warnings, Excel import, publishing (PDF & calendar)
 
 **Room capacity vs enrolment**
 * Placing a class in a room that seats fewer students than are enrolled now
@@ -102,7 +109,7 @@
 **Tests**: 56 → **83**, including front-end integrity checks that fail the build
 if a button's `data-action`, a shortcut or a dialog id has no implementation.
 
-## 2.1.0 — data management, shifts, Excel, undo/redo
+### Data management, shifts, Excel, undo/redo
 
 **Manage your own data (no SQL needed)**
 * Add / edit / delete **teachers** (name, email, department, shift) — <kbd>Alt+T</kbd>
@@ -154,7 +161,11 @@ if a button's `data-action`, a shortcut or a dialog id has no implementation.
 
 **Tests:** 35 → **56**.
 
-## 2.0.0 — rewrite
+### The rewrite itself
 
-34 defects fixed and the project turned into a zero-configuration
-cross-platform desktop application. See `docs/BUGS_AND_FIXES.md`.
+* Packaged as a real desktop app for **Windows, macOS and Linux** — no Python,
+  no SQL Server, no ODBC driver and no internet connection required
+* Embedded SQLite created, seeded and migrated automatically in a per-user data
+  folder; optionally point it at SQL Server, PostgreSQL or MySQL with one line
+  of `.env`
+* Server-side clash engine, atomic saves, and a test suite of **94 tests**

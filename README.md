@@ -1,23 +1,62 @@
 <div align="center">
 
-<img src="packaging/icon.png" width="96" alt="">
+<img src="packaging/icon.png" width="96" alt="Automated Timetable Generator app icon">
 
 # Automated Timetable Generator
 
-**Clash-free university scheduling — one download, no setup.**
+### Free, offline timetable software for universities, colleges and schools — Windows, macOS and Linux
 
-Add your teachers, rooms and courses inside the app, drag sections onto a
-room × time grid, and let it block every room, instructor, student and capacity
-conflict *as you place classes*. Then publish the result as Excel, PDF or a live
-calendar feed.
+**Automatic class scheduling with real-time clash detection, drag-and-drop
+timetable editing, lab and semester support, and Excel / PDF / calendar export.**
 
-[Download](#-download) · [User guide](docs/USER_GUIDE.md) · [Build it yourself](docs/BUILD.md) · [Changelog](CHANGELOG.md) · [What was fixed](docs/BUGS_AND_FIXES.md)
+[![Latest release](https://img.shields.io/github/v/release/farhanwaris78/automated-timetable-generator?label=download&style=for-the-badge)](../../releases/latest)
+[![Platforms](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-supported-2b3465?style=for-the-badge)](#-download-timetable-software-for-windows-macos-and-linux)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-green?style=for-the-badge)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-94%20passing-brightgreen?style=for-the-badge)](tests/test_app.py)
+
+[⬇ Download](#-download-timetable-software-for-windows-macos-and-linux) ·
+[✨ Features](#-features) ·
+[🚀 Quick start](#-quick-start-run-the-timetable-generator-from-source) ·
+[📘 User guide](docs/USER_GUIDE.md) ·
+[❓ FAQ](#-faq)
 
 </div>
 
 ---
 
-## ⬇ Download
+## What is the Automated Timetable Generator?
+
+**Automated Timetable Generator** is a free, open-source **timetable maker** and
+**class scheduling program** for universities, colleges, schools, academies and
+training institutes. It builds a **clash-free weekly timetable** for every
+teacher, classroom, lab, course section and student batch, and it runs
+completely **offline** as a desktop application on **Windows, macOS and Linux** —
+no Python, no database server, no subscription and no internet connection.
+
+Use it to:
+
+* create a **university timetable**, **college class schedule** or **school
+  routine** in minutes instead of days;
+* **automatically generate a timetable** with one click, then fine-tune it by
+  **drag and drop**;
+* **detect and prevent scheduling conflicts** — room double-bookings, teacher
+  clashes, student clashes, semester/batch clashes, lecture-versus-lab overlaps
+  and over-full rooms;
+* schedule **theory lectures and laboratory sessions separately**, with their
+  own credit hours;
+* produce **semester-wise timetables** — one worksheet or one PDF page per
+  semester;
+* **export the timetable to Excel (.xlsx), PDF, CSV** or a **live iCalendar
+  feed** for Google Calendar, Outlook and Apple Calendar.
+
+<sub>Also known as: automatic timetable generator, class scheduler, lecture
+timetable software, exam and course scheduling system, school routine maker,
+university time table generator, faculty workload scheduler.</sub>
+
+---
+
+## ⬇ Download timetable software for Windows, macOS and Linux
+
 
 Grab the file for your machine from the [Releases page](../../releases) — no
 Python, no SQL Server, no ODBC driver, no internet connection required.
@@ -42,7 +81,7 @@ lives in one per-user folder; uninstalling leaves nothing behind.
 
 ---
 
-## ✨ Features
+## ✨ Features of this automatic timetable generator
 
 ### Your data, managed in the app
 No SQL, no seed files. Every entity has a dialog, a keyboard shortcut and a row
@@ -128,7 +167,7 @@ target a single semester, and both the Excel and PDF exports can be produced
 
 ---
 
-## 🚀 Run from source
+## 🚀 Quick start: run the timetable generator from source
 
 ```bash
 git clone https://github.com/farhanwaris78/automated-timetable-generator.git
@@ -151,7 +190,7 @@ python -m pytest -q                # 83 tests
 
 ---
 
-## 📦 Build the installers
+## 📦 Build the Windows, macOS and Linux installers yourself
 
 ```bash
 pip install -r requirements-dev.txt
@@ -168,7 +207,7 @@ together: **[docs/BUILD.md](docs/BUILD.md)**.
 
 ---
 
-## 🏗 Architecture
+## 🏗 Architecture & tech stack
 
 ```
 launcher.py                 frozen-app entry point (PyInstaller / cx_Freeze)
@@ -237,7 +276,7 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 
 ---
 
-## 🔧 Configuration
+## 🔧 Configuration options
 
 Everything is optional. Copy [`.env.example`](.env.example) next to the
 executable as `.env` to change any of it.
@@ -254,7 +293,7 @@ executable as `.env` to change any of it.
 
 ---
 
-## 📋 Where this came from
+## 📋 Project history: from broken prototype to release
 
 Version 1 was a prototype that could not run outside its author's PC: the
 requirements file was UTF-16 (so `pip install -r` failed), the PDF library was
@@ -281,7 +320,109 @@ cell with itself so it never found anything.
 
 ---
 
+---
+
+## ❓ FAQ
+
+<details open>
+<summary><strong>Is this timetable generator really free?</strong></summary>
+
+Yes. It is free and open source under the MIT licence — free for schools,
+colleges, universities and commercial use. There is no account, no licence key,
+no trial period and no paid tier.
+</details>
+
+<details>
+<summary><strong>Does it work offline / without internet?</strong></summary>
+
+Completely. Everything runs on your own machine: the interface, the scheduling
+engine and the database. There is no cloud service, no CDN and no telemetry, so
+it works on an air-gapped lab PC or an exam-hall laptop.
+</details>
+
+<details>
+<summary><strong>How does the automatic timetable generation work?</strong></summary>
+
+Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> (*Auto-fill remaining*) and
+the scheduler walks every unscheduled class — largest enrolment first — and
+drops it into the first day/slot/room where it causes no room, teacher, student,
+semester or capacity conflict, preferring lab rooms for lab sessions. On the
+bundled sample data it schedules 65 classes (45 lectures + 20 labs) in well
+under a second. You can also fill one semester at a time and adjust anything by
+hand afterwards.
+</details>
+
+<details>
+<summary><strong>What kinds of scheduling conflicts does it detect?</strong></summary>
+
+Room double-booking, teacher double-booking, student clashes (with the affected
+roll numbers listed), duplicate placement of a course-section, lecture-vs-lab
+overlap for the same section, semester/batch clashes, labs placed outside lab
+rooms, and rooms with fewer seats than enrolled students. Errors block the
+placement; warnings inform you without getting in the way.
+</details>
+
+<details>
+<summary><strong>Can it handle labs, semesters and multiple sections?</strong></summary>
+
+Yes. A course can carry a lab with its own credit hours, and the lab is
+scheduled as a separate block from the lecture. Courses belong to a semester,
+and a *semester + section* is treated as one student batch that can never be in
+two rooms at once. Any number of sections per course is supported.
+</details>
+
+<details>
+<summary><strong>Can I export the timetable to Excel or PDF?</strong></summary>
+
+Yes — an `.xlsx` workbook with one colour-coded worksheet per day, one worksheet
+per semester, a summary sheet, a per-teacher sheet and a list of anything still
+unscheduled; PDFs for the master grid or per teacher, section, semester or room;
+CSV; a print stylesheet; and `.ics` calendar files plus a live subscription link
+for Google Calendar, Outlook and Apple Calendar.
+</details>
+
+<details>
+<summary><strong>Which operating systems are supported?</strong></summary>
+
+Windows 10/11 (installer `.msi` or portable `.zip`), macOS on Apple Silicon and
+Intel (`.dmg`), and Linux (`.deb` package or portable `.tar.gz`). The same code
+also runs from source on any OS with Python 3.10 or newer.
+</details>
+
+<details>
+<summary><strong>Where is my data stored, and can I use my own database?</strong></summary>
+
+By default in a single SQLite file in your user data folder, created and
+migrated automatically. Set `TTG_DATABASE_URL` in a `.env` file to use
+PostgreSQL, MySQL or Microsoft SQL Server instead.
+</details>
+
+<details>
+<summary><strong>Can I import my existing data from a spreadsheet?</strong></summary>
+
+Yes. Press <kbd>Ctrl</kbd>+<kbd>I</kbd>, download the template workbook, fill in
+your teachers, buildings, rooms, courses and sections, and import it. Records
+are matched by name or code and updated instead of duplicated, so the same file
+can be re-imported safely.
+</details>
+
+---
+
+## 🔍 Keywords
+
+Automated timetable generator · automatic timetable software · university
+timetable generator · college class scheduling software · school timetable maker
+· class scheduler · lecture and lab scheduling · semester-wise timetable ·
+timetable clash detection · conflict-free class scheduling · drag and drop
+timetable editor · room and teacher allocation software · faculty workload
+timetable · course scheduling system · academic scheduling app · free open
+source timetable generator · offline timetable software · timetable to Excel
+PDF iCalendar export · Windows macOS Linux desktop timetable app · Python Flask
+SQLite scheduling application.
+
+---
+
 ## 📄 Licence
 
 MIT — see [LICENSE](LICENSE).
-Original concept: FAST-NUCES Islamabad campus timetabling.
+Original concept: university campus timetabling.

@@ -435,7 +435,7 @@ browser once the socket accepts connections.
 
 ---
 
-## Round 4 (v2.3) — defects found while adding labs and semesters
+## Round 4 — defects found while adding labs and semesters
 
 | # | Where | Problem | Fix |
 |---|---|---|---|

@@ -4,11 +4,11 @@
 
 | Platform | File | How |
 |---|---|---|
-| Windows 10/11 | `AutomatedTimetableGenerator-2.3.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
-| Windows (no admin rights) | `TimetableGenerator-2.3.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
-| macOS | `TimetableGenerator-2.3.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
-| Ubuntu/Debian | `timetable-generator_2.3.0_amd64.deb` | `sudo apt install ./timetable-generator_2.3.0_amd64.deb` |
-| Any Linux | `TimetableGenerator-2.3.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
+| Windows 10/11 | `AutomatedTimetableGenerator-2.0.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
+| Windows (no admin rights) | `TimetableGenerator-2.0.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
+| macOS | `TimetableGenerator-2.0.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
+| Ubuntu/Debian | `timetable-generator_2.0.0_amd64.deb` | `sudo apt install ./timetable-generator_2.0.0_amd64.deb` |
+| Any Linux | `TimetableGenerator-2.0.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
 
 Nothing else is required — no Python, no SQL Server, no ODBC driver, no
 internet connection.
