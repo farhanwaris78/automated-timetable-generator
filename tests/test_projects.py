@@ -405,7 +405,10 @@ def test_browser_can_leave_the_home_folder(client, settings: Settings):
     assert str(Path(current["path"])) == Path(current["path"]).anchor and hops > 0
 
     # And an absolute path outside the home folder resolves normally.
-    assert client.get("/api/fs/list?path=/tmp").status_code == 200
+    import tempfile
+
+    outside = Path(tempfile.gettempdir()).resolve()
+    assert client.get("/api/fs/list?path=" + str(outside)).status_code == 200
 
 
 def test_fs_roots_lists_drives_and_places(client):
@@ -420,15 +423,21 @@ def test_fs_roots_lists_drives_and_places(client):
 def test_fs_check_reports_writability(client, settings: Settings):
     ok = client.post("/api/fs/check", json={"path": str(settings.log_dir)}).get_json()
     assert ok["writable"] is True
+    # A folder that does not exist is reported clearly rather than as writable.
+    assert client.post("/api/fs/check", json={"path": str(settings.log_dir / "ghost")}).status_code == 400
 
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="POSIX permission bits: chmod does not restrict directories on Windows, and root ignores them",
+)
+def test_fs_check_detects_a_read_only_folder(client, settings: Settings):
     readonly = settings.log_dir / "locked"
     readonly.mkdir()
     readonly.chmod(0o500)
     try:
         result = client.post("/api/fs/check", json={"path": str(readonly)}).get_json()
-        # root ignores permission bits; every normal user is refused.
-        expect_writable = hasattr(os, "geteuid") and os.geteuid() == 0
-        assert result["writable"] is expect_writable
+        assert result["writable"] is False
     finally:
         readonly.chmod(0o700)
 

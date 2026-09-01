@@ -604,9 +604,11 @@ def test_pdf_and_ics_also_honour_the_folder(client, tmp_path):
     assert "BEGIN:VCALENDAR" in Path(ics["path"]).read_text(encoding="utf-8")
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="POSIX permission bits: chmod does not restrict directories on Windows, and root ignores them",
+)
 def test_export_to_a_read_only_folder_explains_itself(client, tmp_path):
-    if hasattr(os, "geteuid") and os.geteuid() == 0:
-        pytest.skip("root ignores permission bits")
     _one_class(client)
     locked = tmp_path / "locked"
     locked.mkdir()
