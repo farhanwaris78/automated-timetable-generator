@@ -47,11 +47,11 @@ jobs:
           - os: ubuntu-22.04            # oldest glibc => widest Linux support
             label: linux-x64
             targets: exe portable deb
-          - os: macos-13                # Intel
-            label: macos-x64
-            targets: exe portable dmg
-          - os: macos-14                # Apple Silicon
+          - os: macos-15                # Apple Silicon (arm64)
             label: macos-arm64
+            targets: exe portable dmg
+          - os: macos-15-intel          # last supported Intel image
+            label: macos-x64
             targets: exe portable dmg
     steps:
       - uses: actions/checkout@v4
