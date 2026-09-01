@@ -63,7 +63,7 @@
       <div id="coursesList" class="courses-list" aria-live="polite">
         <p class="empty">Loading courses&hellip;</p>
       </div>
-      <button type="button" class="btn btn-block" data-action="addCourse">+ Add course <kbd>Alt+C</kbd></button>
+      <button type="button" class="btn btn-block" data-action="addCourse" title="Add course (Alt+C)">+ Add course</button>
       <p class="sidebar-foot">Drag a course onto a free slot. Drag it back here to unschedule.</p>
     </aside>
 
@@ -76,8 +76,8 @@
         <div class="field shift-field">
           <label>Shift</label>
           <div class="segmented" role="group" aria-label="Shift">
-            <button type="button" class="seg" data-shift="morning" aria-pressed="true">Morning <kbd>Alt+1</kbd></button>
-            <button type="button" class="seg" data-shift="evening" aria-pressed="false">Evening <kbd>Alt+2</kbd></button>
+            <button type="button" class="seg" data-shift="morning" aria-pressed="true" title="Morning shift (Alt+1)">Morning</button>
+            <button type="button" class="seg" data-shift="evening" aria-pressed="false" title="Evening shift (Alt+2)">Evening</button>
           </div>
         </div>
         <div class="field">
@@ -120,7 +120,7 @@
           <input type="number" id="roomLimit" min="1" max="200" value="12" required>
         </div>
         <div class="setup-actions">
-          <button type="submit" class="btn btn-primary" data-action="generate">Generate grid <kbd>Ctrl+G</kbd></button>
+          <button type="submit" class="btn btn-primary" data-action="generate" title="Generate grid (Ctrl+G)">Generate grid</button>
         </div>
       </form>
 
@@ -145,6 +145,13 @@
           <button type="button" class="btn" data-action="print">Print</button>
         </div>
         <div class="toolbar-group">
+          <label class="inline-field" for="semesterFilter">Semester
+            <select id="semesterFilter" title="Show only one semester's classes">
+              <option value="">All</option>
+            </select>
+          </label>
+        </div>
+        <div class="toolbar-group">
           <button type="button" class="btn btn-warn" data-action="clearGrid">Clear grid</button>
           <button type="button" class="btn btn-danger" data-action="resetSaved">Reset saved</button>
         </div>
@@ -153,6 +160,8 @@
           <span id="placedCount" class="pill pill-muted">0 scheduled</span>
           <span id="conflictCount" class="pill pill-ok">No clashes</span>
           <span id="warnCount" class="pill pill-ok" title="Rooms that are too small for the enrolled class">No capacity warnings</span>
+          <button type="button" id="unscheduledPill" class="pill pill-ok pill-button"
+            data-action="showUnscheduled" title="Lectures and labs that are not on the grid yet">Everything scheduled</button>
         </div>
       </div>
 
@@ -177,6 +186,17 @@
         <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
       </header>
       <div id="courseDialogBody" class="dialog-body"></div>
+    </div>
+  </div>
+
+  <!-- unscheduled report -->
+  <div id="unscheduledDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="unscheduledTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="unscheduledTitle">Not scheduled yet</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div id="unscheduledBody" class="dialog-body"></div>
     </div>
   </div>
 
@@ -256,6 +276,23 @@
         <input type="text" id="courseDept" maxlength="100" placeholder="Computer Science">
         <label for="courseCredits">Credit hours</label>
         <input type="number" id="courseCredits" min="0" max="12" value="3">
+        <label for="courseSemester">Semester</label>
+        <select id="courseSemester">
+          <option value="0">Not assigned</option>
+          <option>1</option><option>2</option><option>3</option><option>4</option>
+          <option>5</option><option>6</option><option>7</option><option>8</option>
+          <option>9</option><option>10</option><option>11</option><option>12</option>
+        </select>
+        <label for="courseHasLab">Lab</label>
+        <div class="lab-field">
+          <label class="switch-line"><input type="checkbox" id="courseHasLab"> This course has a lab</label>
+          <div class="lab-hours" id="labHoursRow" hidden>
+            <label for="courseLabCredits">Lab credit hours</label>
+            <input type="number" id="courseLabCredits" min="1" max="6" value="1">
+          </div>
+          <p class="hint">A lab is scheduled as its own block, so the sidebar shows a separate
+            <span class="kind-chip">LAB</span> card for every section.</p>
+        </div>
         <label for="courseColor">Colour</label>
         <input type="color" id="courseColor" value="#a9d2e1">
         <label for="courseSections">Sections</label>
@@ -380,6 +417,7 @@
             <option value="all">Master grid - one page per day</option>
             <option value="teacher">One page per teacher</option>
             <option value="section">One page per course section</option>
+            <option value="semester">One page per semester (batch view)</option>
             <option value="room">One page per room</option>
           </select>
           <label for="publishFilter">Limit to</label>
@@ -459,7 +497,10 @@
           <li><strong>Undo/redo</strong> anything with <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.</li>
           <li><strong>Save</strong> (<kbd>Ctrl+S</kbd>) and <strong>export</strong> to Excel (<kbd>Ctrl+E</kbd>) - one
             worksheet per day, plus Summary and By-Teacher sheets.</li>
-          <li><strong>Publish</strong> (<kbd>Ctrl+Shift+P</kbd>) - per-teacher, per-section or per-room PDFs, and a
+          <li><strong>Labs &amp; semesters</strong> - tick <em>This course has a lab</em> in the course editor and the
+            lab gets its own draggable card; give the course a semester and the app blocks two classes of the same
+            semester-section at the same time. Excel export writes one sheet per semester.</li>
+          <li><strong>Publish</strong> (<kbd>Ctrl+Shift+P</kbd>) - per-teacher, per-section, per-semester or per-room PDFs, and a
             live calendar feed students can subscribe to.</li>
           <li><strong>Import</strong> (<kbd>Ctrl+I</kbd>) - bulk-load teachers, rooms and courses from a spreadsheet
             instead of typing them one by one.</li>

@@ -485,3 +485,74 @@ kbd {
   font-size: 12px;
   word-break: break-all;
 }
+
+
+/* ------------------------- v2.3: labs, semesters ------------------------- */
+.kind-chip {
+  display: inline-block;
+  margin-left: .35rem;
+  padding: 0 .32rem;
+  border-radius: 4px;
+  font-size: .58rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  vertical-align: middle;
+  background: rgba(17, 24, 39, .78);
+  color: #fff;
+}
+
+.course-card.is-lab,
+.placed.is-lab {
+  background-image: repeating-linear-gradient(135deg,
+    rgba(255, 255, 255, .16) 0 6px, rgba(255, 255, 255, 0) 6px 12px);
+}
+
+.placed.is-dimmed { opacity: .28; filter: saturate(.35); }
+.placed.is-dimmed:hover { opacity: .85; }
+
+.pill-button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.pill-button:focus-visible { outline: 2px solid var(--accent, #4c5caf); outline-offset: 2px; }
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .78rem;
+  color: var(--muted, #5b6479);
+}
+.inline-field select { padding: .3rem .45rem; }
+
+.lab-field { display: grid; gap: .35rem; }
+.switch-line { display: flex; align-items: center; gap: .45rem; font-weight: 500; }
+.switch-line input { width: auto; }
+.lab-hours { display: flex; align-items: center; gap: .5rem; }
+.lab-hours input { width: 5rem; }
+.lab-field .hint { margin: 0; font-size: .74rem; color: var(--muted, #5b6479); }
+
+.kind-switch {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: .75rem 0 .25rem;
+  font-size: .82rem;
+}
+.btn-mini { padding: .2rem .6rem; font-size: .76rem; }
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: .35rem 0 .9rem;
+  font-size: .82rem;
+}
+.mini-table th,
+.mini-table td {
+  border-bottom: 1px solid var(--line, #e3e7ef);
+  padding: .3rem .45rem;
+  text-align: left;
+}
+.mini-table th { font-weight: 600; color: var(--muted, #5b6479); }
+.mini-table .cell-lab { font-weight: 700; }

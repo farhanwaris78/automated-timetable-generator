@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.3.0 — labs, semesters, and a report of what is missing
+
+**Labs are first-class classes**
+* The course editor gained **“This course has a lab”** with its own
+  **lab credit hours** (default 1, editable 1–6)
+* Every section with a lab produces a **second draggable card** in the sidebar,
+  marked with a `LAB` chip, so the lecture and the lab are scheduled separately
+* Placed lab blocks carry the same `LAB` chip and a hatched pattern
+* The class-details dialog has a **Theory ⇄ Lab switch** — flip a placement to
+  the other half of the course and it is re-validated instantly
+* New clash rules:
+  * a lab may only be placed for a course that *has* a lab (**error**)
+  * the lecture and the lab of one section may never overlap — the same students
+    attend both (**error**)
+  * a lab scheduled outside a `Lab` room is a **warning**, never a blocker
+* Auto-fill schedules lectures *and* labs, and steers labs into `Lab` rooms
+  first while keeping lectures out of them where possible
+
+**Semester-wise timetabling**
+* Courses now carry a **semester** (1–12, or unassigned)
+* New **semester clash** rule: two classes of the same semester *and* the same
+  section can never share a time slot — the batch cannot be in two places at
+  once
+* A **semester filter** in the toolbar narrows the sidebar and dims every
+  placement that belongs to another semester
+* Auto-fill accepts a semester so you can build one batch at a time
+* **Excel export writes one sheet per semester** — rows are day × section,
+  columns are the time slots — next to the existing per-day sheets
+* The `Summary` sheet gained **Semester** and **Type** columns; `By Teacher`
+  marks labs with `[LAB]`
+* New PDF scope **“One page per semester”**, and `calendar.ics?semester=3`
+
+**Report of unallocated classes**
+* A new toolbar pill shows *“n not scheduled”* and turns green when nothing is
+  missing; clicking it opens a report grouped by semester listing every lecture
+  and lab that still needs a slot
+* The workbook gains an **Unscheduled** sheet whenever something is missing
+* New endpoint `POST /api/timetable/unscheduled` (checks the grid you send, or
+  the saved timetable when you send nothing)
+
+**Cleaner controls**
+* The shortcut hints printed on the tabs and buttons (*Morning Alt+1*,
+  *Generate grid Ctrl+G*, …) are gone; they now live in tooltips and in the
+  <kbd>F1</kbd> shortcut reference only
+
+**Data & compatibility**
+* Additive migrations only: `courses.has_lab`, `courses.lab_credit_hours`,
+  `courses.semester`, `timetable_entries.kind` — existing databases upgrade in
+  place on first launch, with every old entry treated as `theory`
+* The Excel import template carries the three new course columns
+* Test suite: 83 → **94 tests**, all green
+
 ## 2.2.0 — capacity warnings, Excel import, publishing (PDF & calendar)
 
 **Room capacity vs enrolment**

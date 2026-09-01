@@ -214,6 +214,7 @@ def create_app(settings: Settings | None = None) -> Flask:
                     "room_id": a.room_id,
                     "course_id": a.course_id,
                     "section": a.section,
+                    "kind": a.kind,
                 }
                 for a in others
             ]
@@ -244,6 +245,26 @@ def create_app(settings: Settings | None = None) -> Flask:
             else "Timetable was not saved because unresolved clashes were found."
         )
         return jsonify({**result, "message": message}), status
+
+    @app.post("/api/timetable/unscheduled")
+    def api_unscheduled():
+        """Which required classes (lectures and labs) are still not placed?"""
+        payload = request.get_json(silent=True) or {}
+        raw = payload.get("assignments")
+        assignments = _parse_assignments(raw) if raw is not None else None
+        missing = service().unscheduled(assignments)
+        by_semester: dict[str, int] = {}
+        for item in missing:
+            key = str(item["semester"] or "unassigned")
+            by_semester[key] = by_semester.get(key, 0) + 1
+        return jsonify(
+            {
+                "ok": not missing,
+                "required": len(service().required_classes()),
+                "missing": missing,
+                "by_semester": by_semester,
+            }
+        )
 
     @app.post("/api/timetable/reset")
     def api_reset_timetable():
@@ -364,6 +385,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             room_ids=[int(r) for r in (payload.get("room_ids") or [])],
             shift=str(payload.get("shift") or "morning"),
             limit=int(payload["limit"]) if payload.get("limit") else None,
+            semester=int(payload["semester"]) if payload.get("semester") else None,
         )
         return jsonify(
             {
@@ -377,6 +399,7 @@ def create_app(settings: Settings | None = None) -> Flask:
                         "course_id": a.course_id,
                         "section": a.section,
                         "shift": a.shift,
+                        "kind": a.kind,
                     }
                     for a in created
                 ],
@@ -409,6 +432,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             slots=payload.get("slots") or None,
             shift=str(payload.get("shift") or "all"),
             title=str(payload.get("title") or "University Timetable"),
+            unscheduled=svc.unscheduled(assignments if assignments else None),
         )
         return send_file(
             io.BytesIO(workbook),
@@ -466,6 +490,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             course_id=int(payload["course_id"]) if payload.get("course_id") else None,
             section=payload.get("section") or None,
             room_id=int(payload["room_id"]) if payload.get("room_id") else None,
+            semester=int(payload["semester"]) if payload.get("semester") else None,
             shift=str(payload.get("shift") or "all"),
         )
 
@@ -482,6 +507,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         )
         rooms_used = sorted({(int(e["room_id"]), str(e.get("room_label") or "")) for e in entries},
                             key=lambda item: item[1])
+        semesters = sorted({int(e.get("semester") or 0) for e in entries if int(e.get("semester") or 0)})
         return jsonify(
             {
                 "saved_classes": len(entries),
@@ -491,6 +517,8 @@ def create_app(settings: Settings | None = None) -> Flask:
                     for cid, code, name, section in sections
                 ],
                 "rooms": [{"id": rid, "label": label} for rid, label in rooms_used],
+                "semesters": semesters,
+                "unscheduled": len(service().unscheduled()),
             }
         )
 
@@ -501,8 +529,8 @@ def create_app(settings: Settings | None = None) -> Flask:
         if not entries:
             raise ValidationError("Nothing matches that selection, so there is no PDF to make.")
         scope = str(payload.get("scope") or "all")
-        if scope not in ("all", "teacher", "section", "room"):
-            raise ValidationError("scope must be one of: all, teacher, section, room.")
+        if scope not in ("all", "teacher", "section", "room", "semester"):
+            raise ValidationError("scope must be one of: all, teacher, section, room, semester.")
         pdf = build_pdf(
             entries,
             service().list_rooms(),
@@ -542,11 +570,14 @@ def create_app(settings: Settings | None = None) -> Flask:
             "course_id": request.args.get("course_id"),
             "section": request.args.get("section"),
             "room_id": request.args.get("room_id"),
+            "semester": request.args.get("semester"),
             "shift": request.args.get("shift") or "all",
         }
         entries = _publish_entries(payload)
         name = payload["teacher"] or (
-            f"{payload['section']} timetable" if payload["section"] else "University Timetable"
+            f"Semester {payload['semester']} timetable" if payload.get("semester")
+            else f"{payload['section']} timetable" if payload["section"]
+            else "University Timetable"
         )
         return _ics_response(entries, name, request.args.get("weeks", 16), request.args.get("start"), False)
 

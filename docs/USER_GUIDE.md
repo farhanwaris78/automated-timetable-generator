@@ -4,11 +4,11 @@
 
 | Platform | File | How |
 |---|---|---|
-| Windows 10/11 | `AutomatedTimetableGenerator-2.2.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
-| Windows (no admin rights) | `TimetableGenerator-2.2.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
-| macOS | `TimetableGenerator-2.2.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
-| Ubuntu/Debian | `timetable-generator_2.2.0_amd64.deb` | `sudo apt install ./timetable-generator_2.2.0_amd64.deb` |
-| Any Linux | `TimetableGenerator-2.2.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
+| Windows 10/11 | `AutomatedTimetableGenerator-2.3.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
+| Windows (no admin rights) | `TimetableGenerator-2.3.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
+| macOS | `TimetableGenerator-2.3.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
+| Ubuntu/Debian | `timetable-generator_2.3.0_amd64.deb` | `sudo apt install ./timetable-generator_2.3.0_amd64.deb` |
+| Any Linux | `TimetableGenerator-2.3.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
 
 Nothing else is required — no Python, no SQL Server, no ODBC driver, no
 internet connection.
@@ -26,8 +26,8 @@ default browser opens automatically. **Closing that window stops the app.**
 ├───────────┬──────────────────────────────────────────────────────────┤
 │ Courses   │ Days | Start | End | Class | Break | Building | Rooms  ▶ │
 │ [search]  ├──────────────────────────────────────────────────────────┤
-│ ▣ MLOps A │ Save to database · Load saved · Check clashes · PDF · CSV│
-│ ▣ MLOps B ├──────────────────────────────────────────────────────────┤
+│ ▣ MLOps A │ Save · Load · Check clashes · Auto-fill · Excel · Publish│
+│ ▣ ML A LAB│ Semester [All ▾]   0 clashes · 12 not scheduled          │
 │ ▣ ML A    │ Mon | Tue | Wed | Thu | Fri                              │
 │ …         ├──────────────────────────────────────────────────────────┤
 │           │ Room \ Time | 08:30-09:50 | 10:00-11:20 | …              │
@@ -72,13 +72,60 @@ Every placement, move, deletion, auto-fill and grid clear can be undone with
 (100 steps of history). The ↶ / ↷ buttons on the toolbar do the same and grey
 out when there is nothing to undo.
 
+## Labs
+
+A course can have a **lab** as well as a lecture. Open the course editor
+(<kbd>Alt</kbd>+<kbd>C</kbd>, or *Manage data → Courses → Edit*) and tick
+**“This course has a lab”**, then set its **lab credit hours** (1 by default).
+
+From then on every section of that course shows **two cards** in the left panel:
+
+| Card | Meaning |
+|---|---|
+| `CS3009 Artificial Intelligence - A` | the lecture (theory) |
+| `CS3009 Artificial Intelligence - A` **LAB** | the lab session |
+
+Drag them in separately. A placed lab keeps the `LAB` chip and a subtle hatched
+pattern, and clicking it opens the details dialog where a **Theory / Lab**
+switch lets you flip the block to the other half of the course.
+
+Rules the app enforces for labs:
+
+* the lecture and the lab of one section can never overlap (same students);
+* a lab can only be placed for a course that actually has one;
+* a lab in a room whose type is not **Lab** is a *warning* — it is placed, and
+  you are told, but nothing is blocked.
+
+## Semesters
+
+Give each course a **semester** (1–12) in the course editor. The app then treats
+a **semester + section** as one student batch and refuses to put two of its
+classes in the same slot — even when the rooms, teachers and enrolments differ.
+That is the *semester clash*.
+
+* The **Semester** picker on the toolbar filters the course list and dims every
+  class on the grid that belongs to a different semester.
+* With a semester selected, *Auto-fill remaining* fills **only that semester**.
+* **Excel export writes one worksheet per semester** (rows = day × section),
+  and **Publish → One page per semester** does the same as a PDF.
+* `http://localhost:PORT/calendar.ics?semester=3` is a live feed for one batch.
+
+## What is still unscheduled
+
+The toolbar shows a pill: **“*n* not scheduled”** (green *Everything scheduled*
+when nothing is missing). Click it for a report grouped by semester, listing
+every lecture and lab that has no slot yet, with its code, section, type and
+teacher. The same list is written to an **Unscheduled** sheet in the Excel
+export, so the gaps travel with the file.
+
 ## Auto-fill
 
 *Auto-fill remaining* (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>) places every
-still-unscheduled section into the first slot where it causes no room, teacher,
-student or capacity conflict — largest classes first. On the bundled dataset it
-schedules all 45 sections in well under a second. Review the result, adjust by
-hand, then save.
+still-unscheduled class — lectures *and* labs — into the first slot where it
+causes no room, teacher, student, semester or capacity conflict, largest classes
+first, with labs preferring rooms of type **Lab**. On the bundled dataset it
+schedules all 65 classes (45 lectures + 20 labs) in well under a second. Review
+the result, adjust by hand, then save.
 
 ## Room capacity warnings
 
@@ -162,7 +209,9 @@ saved timetable, optionally limited to a single teacher, section or room.
    | **room** | that room is already booked in an overlapping slot |
    | **instructor** | the teacher of this section already teaches elsewhere then |
    | **student** | students enrolled in both classes would collide — their roll numbers are listed |
-   | **duplicate** | the same course-section is already scheduled at that time |
+   | **duplicate** | the same course-section is already scheduled at that time — including its own lecture against its lab |
+   | **semester** | another class of the same semester **and** section is already in that slot |
+   | **roomtype** | *(warning only)* a lab placed in a room that is not a Lab |
    | **capacity** | *(warning only)* more students than seats; the class is still placed |
 
 5. **Adjust.** Drag a placed class to another cell to move it, drag it back to
@@ -176,10 +225,11 @@ saved timetable, optionally limited to a single teacher, section or room.
 9. **Load saved** restores the stored week (grid settings included) next time
    you open the app.
 10. **Export**:
-    * **Excel** (<kbd>Ctrl</kbd>+<kbd>E</kbd>) — **one worksheet per day**, colour-coded exactly like the
-      screen, plus a filterable **Summary** sheet and a **By Teacher** sheet. Both shifts are included.
+    * **Excel** (<kbd>Ctrl</kbd>+<kbd>E</kbd>) — **one worksheet per day** and **one per semester**,
+      colour-coded exactly like the screen, plus a filterable **Summary** sheet, a **By Teacher** sheet
+      and an **Unscheduled** sheet when something is missing. Both shifts are included.
     * **Publish** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) — PDF for the whole grid or per
-      teacher / section / room, plus `.ics` calendar files and a live subscription link.
+      teacher / section / **semester** / room, plus `.ics` calendar files and a live subscription link.
     * **CSV** (<kbd>Alt</kbd>+<kbd>V</kbd>) and **Print** (<kbd>Ctrl</kbd>+<kbd>P</kbd>).
 
 ### Keyboard shortcuts

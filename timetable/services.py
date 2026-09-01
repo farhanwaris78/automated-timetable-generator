@@ -74,6 +74,7 @@ class Assignment:
     course_id: int
     section: str
     shift: str = "morning"
+    kind: str = "theory"                # theory | lab
     entry_id: int | None = None
 
     @property
@@ -113,6 +114,10 @@ class Assignment:
         if shift not in ("morning", "evening"):
             shift = "morning"
 
+        kind = str(raw.get("kind") or "theory").strip().lower()
+        if kind not in ("theory", "lab"):
+            raise ValidationError("kind must be either 'theory' or 'lab'")
+
         entry_id = raw.get("entry_id")
         return cls(
             day=day,
@@ -122,6 +127,7 @@ class Assignment:
             course_id=course_id,
             section=section,
             shift=shift,
+            kind=kind,
             entry_id=int(entry_id) if entry_id not in (None, "") else None,
         )
 
@@ -134,13 +140,15 @@ class Assignment:
             "course_id": self.course_id,
             "section": self.section,
             "shift": self.shift,
+            "kind": self.kind,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
 
 @dataclass
 class Conflict:
-    kind: str                       # room | instructor | student | duplicate | capacity | unknown
+    kind: str                       # room | instructor | student | semester |
+                                    # duplicate | capacity | roomtype | unknown
     severity: str                   # error | warning
     message: str
     details: dict[str, Any] = field(default_factory=dict)
@@ -192,6 +200,9 @@ class TimetableService:
                 courses.c.color,
                 courses.c.department,
                 courses.c.credit_hours,
+                courses.c.has_lab,
+                courses.c.lab_credit_hours,
+                courses.c.semester,
                 course_sections.c.section,
                 teacher.c.instructor,
                 teacher.c.instructor_id,
@@ -211,23 +222,43 @@ class TimetableService:
             .order_by(courses.c.name, course_sections.c.section)
         )
         with self.engine.connect() as conn:
-            return [
-                {
-                    "id": r.id,
-                    "code": r.code or "",
-                    "name": r.name,
-                    "color": r.color or "#4c5caf",
-                    "department": r.department,
-                    "credit_hours": r.credit_hours,
-                    "section": r.section,
-                    "instructor": r.instructor or "Unassigned",
-                    "instructor_id": r.instructor_id,
-                    "num_students": int(r.num_students or 0),
-                    "label": f"{r.name} - {r.section}",
-                    "key": f"{r.id}:{r.section}",
-                }
-                for r in conn.execute(stmt)
-            ]
+            rows = list(conn.execute(stmt))
+
+        items: list[dict[str, Any]] = []
+        for r in rows:
+            base = {
+                "id": r.id,
+                "code": r.code or "",
+                "name": r.name,
+                "color": r.color or "#4c5caf",
+                "department": r.department,
+                "credit_hours": r.credit_hours,
+                "has_lab": bool(r.has_lab),
+                "lab_credit_hours": int(r.lab_credit_hours or 0),
+                "semester": int(r.semester or 0),
+                "section": r.section,
+                "instructor": r.instructor or "Unassigned",
+                "instructor_id": r.instructor_id,
+                "num_students": int(r.num_students or 0),
+            }
+            # One catalogue entry per class that has to be scheduled: the
+            # lecture, plus the lab when the course has one.
+            items.append({
+                **base,
+                "kind": "theory",
+                "hours": r.credit_hours,
+                "label": f"{r.name} - {r.section}",
+                "key": f"{r.id}:{r.section}:theory",
+            })
+            if r.has_lab:
+                items.append({
+                    **base,
+                    "kind": "lab",
+                    "hours": int(r.lab_credit_hours or 1),
+                    "label": f"{r.name} - {r.section} (Lab)",
+                    "key": f"{r.id}:{r.section}:lab",
+                })
+        return items
 
     def course_details(self, course_id: int, section: str) -> dict[str, Any] | None:
         stmt = (
@@ -379,7 +410,9 @@ class TimetableService:
                 timetable_entries.c.room_id,
                 timetable_entries.c.course_id,
                 timetable_entries.c.section,
+                timetable_entries.c.kind,
                 courses.c.name.label("course_name"),
+                courses.c.semester,
                 rooms.c.room_number,
                 buildings.c.name.label("building"),
             )
@@ -415,7 +448,13 @@ class TimetableService:
                     )
                 ]
             room = conn.execute(
-                select(rooms.c.id, rooms.c.room_number, rooms.c.capacity, buildings.c.name.label("building"))
+                select(
+                    rooms.c.id,
+                    rooms.c.room_number,
+                    rooms.c.capacity,
+                    rooms.c.room_type,
+                    buildings.c.name.label("building"),
+                )
                 .select_from(rooms.join(buildings, rooms.c.building_id == buildings.c.id))
                 .where(rooms.c.id == candidate.room_id)
             ).first()
@@ -432,15 +471,53 @@ class TimetableService:
 
             # Client-supplied grids only carry ids - resolve names so that the
             # conflict messages read like "Machine Learning - B", not "103 - B".
-            missing_names = {e["course_id"] for e in existing if not e.get("course_name")}
+            missing_names = {
+                e["course_id"] for e in existing
+                if not e.get("course_name") or e.get("semester") is None
+            }
             if missing_names:
                 lookup = {
-                    row.id: row.name
-                    for row in conn.execute(select(courses.c.id, courses.c.name).where(courses.c.id.in_(missing_names)))
+                    row.id: row
+                    for row in conn.execute(
+                        select(courses.c.id, courses.c.name, courses.c.semester).where(
+                            courses.c.id.in_(missing_names)
+                        )
+                    )
                 }
                 for entry in existing:
+                    found = lookup.get(entry["course_id"])
                     if not entry.get("course_name"):
-                        entry["course_name"] = lookup.get(entry["course_id"], str(entry["course_id"]))
+                        entry["course_name"] = found.name if found else str(entry["course_id"])
+                    if entry.get("semester") is None:
+                        entry["semester"] = int(found.semester or 0) if found else 0
+
+            course_row = conn.execute(
+                select(courses.c.semester, courses.c.has_lab, courses.c.name).where(
+                    courses.c.id == candidate.course_id
+                )
+            ).first()
+            semester = int(course_row.semester or 0) if course_row else 0
+
+            if candidate.kind == "lab":
+                if course_row is not None and not course_row.has_lab:
+                    return [
+                        Conflict(
+                            "unknown",
+                            "error",
+                            f"{course_row.name} has no lab component. Turn on “This course has a lab” "
+                            "in the course editor first.",
+                        )
+                    ]
+                if (room.room_type or "") != "Lab":
+                    conflicts.append(
+                        Conflict(
+                            "roomtype",
+                            "warning",
+                            f"This is a lab but {room.building}-{room.room_number} is a "
+                            f"{room.room_type or 'Classroom'}, not a Lab.",
+                            {"room_type": room.room_type},
+                        )
+                    )
 
             teacher = self.instructor_for(conn, candidate.course_id, candidate.section)
             roster = {
@@ -473,22 +550,49 @@ class TimetableService:
                     continue
 
                 when = f"{format_12h(other['start_time'])}-{format_12h(other['end_time'])}"
-                other_label = f"{other.get('course_name', other['course_id'])} - {other['section']}"
+                other_kind = str(other.get("kind") or "theory")
+                suffix = " (Lab)" if other_kind == "lab" else ""
+                other_label = f"{other.get('course_name', other['course_id'])} - {other['section']}{suffix}"
 
-                # 1. same course-section twice at the same time
+                # 1. the same course-section cannot run twice at once - not even
+                #    its lecture and its lab, which the same students attend.
                 if other["course_id"] == candidate.course_id and other["section"] == candidate.section:
+                    same_class = other_kind == candidate.kind
                     conflicts.append(
                         Conflict(
                             "duplicate",
                             "error",
-                            f"{other_label} is already scheduled at {when} on "
-                            f"{WEEKDAYS[candidate.day - 1]}.",
+                            (
+                                f"{other_label} is already scheduled at {when} on "
+                                f"{WEEKDAYS[candidate.day - 1]}."
+                            )
+                            if same_class
+                            else (
+                                f"The {other_kind} of this course-section is already at {when} on "
+                                f"{WEEKDAYS[candidate.day - 1]}; the same students attend both."
+                            ),
                             {"entry_id": other.get("id")},
                         )
                     )
                     continue
 
-                # 2. room double booking
+                # 2. semester clash - one batch-section can only be in one place.
+                if (
+                    semester
+                    and int(other.get("semester") or 0) == semester
+                    and str(other["section"]).upper() == candidate.section.upper()
+                ):
+                    conflicts.append(
+                        Conflict(
+                            "semester",
+                            "error",
+                            f"Semester {semester} section {candidate.section.upper()} is already in "
+                            f"{other_label} at {when} on {WEEKDAYS[candidate.day - 1]}.",
+                            {"semester": semester, "entry_id": other.get("id")},
+                        )
+                    )
+
+                # 3. room double booking
                 if int(other["room_id"]) == candidate.room_id:
                     conflicts.append(
                         Conflict(
@@ -500,7 +604,7 @@ class TimetableService:
                         )
                     )
 
-                # 3. instructor double booking
+                # 4. instructor double booking
                 if teacher is not None:
                     other_teacher = self.instructor_for(conn, other["course_id"], other["section"])
                     if other_teacher is not None and other_teacher.id == teacher.id:
@@ -513,7 +617,7 @@ class TimetableService:
                             )
                         )
 
-                # 4. student clash
+                # 5. student clash
                 if roster:
                     other_roster = {
                         r.roll_number
@@ -543,7 +647,9 @@ class TimetableService:
         reports: list[dict[str, Any]] = []
         grid: list[dict[str, Any]] = []
         with self.engine.connect() as conn:
-            names = {c.id: c.name for c in conn.execute(select(courses.c.id, courses.c.name))}
+            rows = conn.execute(select(courses.c.id, courses.c.name, courses.c.semester)).all()
+        names = {row.id: row.name for row in rows}
+        semesters = {row.id: int(row.semester or 0) for row in rows}
 
         for index, item in enumerate(assignments):
             others = [g for g in grid]
@@ -555,6 +661,7 @@ class TimetableService:
                         "course_id": item.course_id,
                         "section": item.section,
                         "course_name": names.get(item.course_id, str(item.course_id)),
+                        "kind": item.kind,
                         "day": item.day,
                         "start_time": item.start_time,
                         "end_time": item.end_time,
@@ -571,10 +678,75 @@ class TimetableService:
                     "course_id": item.course_id,
                     "section": item.section,
                     "shift": item.shift,
+                    "kind": item.kind,
+                    "semester": semesters.get(item.course_id, 0),
                     "course_name": names.get(item.course_id, str(item.course_id)),
                 }
             )
         return reports
+
+    # ------------------------------ auto-fill ------------------------------ #
+    def required_classes(self) -> list[dict[str, Any]]:
+        """Every class that has to appear on the timetable.
+
+        One entry per course-section lecture, plus one per lab when the course
+        has a lab component.
+        """
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    course_sections.c.course_id,
+                    course_sections.c.section,
+                    courses.c.code,
+                    courses.c.name,
+                    courses.c.semester,
+                    courses.c.has_lab,
+                    courses.c.credit_hours,
+                    courses.c.lab_credit_hours,
+                )
+                .select_from(course_sections.join(courses, courses.c.id == course_sections.c.course_id))
+                .order_by(courses.c.semester, courses.c.code, course_sections.c.section)
+            ).all()
+            teachers = {
+                (r.course_id, r.section): r.name
+                for r in conn.execute(
+                    select(courses_taught_by.c.course_id, courses_taught_by.c.section, instructors.c.name)
+                    .select_from(
+                        courses_taught_by.join(instructors, courses_taught_by.c.instructor_id == instructors.c.id)
+                    )
+                )
+            }
+
+        required: list[dict[str, Any]] = []
+        for row in rows:
+            for kind in ("theory", "lab") if row.has_lab else ("theory",):
+                required.append(
+                    {
+                        "course_id": row.course_id,
+                        "code": row.code or "",
+                        "course_name": row.name,
+                        "section": row.section,
+                        "kind": kind,
+                        "semester": int(row.semester or 0),
+                        "hours": int(row.lab_credit_hours if kind == "lab" else row.credit_hours),
+                        "instructor": teachers.get((row.course_id, row.section), "Unassigned"),
+                    }
+                )
+        return required
+
+    def unscheduled(self, assignments: list[Assignment] | None = None) -> list[dict[str, Any]]:
+        """Which required classes are missing from the given (or saved) grid."""
+        if assignments is None:
+            placed = {
+                (int(e["course_id"]), str(e["section"]).upper(), str(e.get("kind") or "theory"))
+                for e in self.load_timetable()
+            }
+        else:
+            placed = {(a.course_id, a.section.upper(), a.kind) for a in assignments}
+        return [
+            item for item in self.required_classes()
+            if (item["course_id"], str(item["section"]).upper(), item["kind"]) not in placed
+        ]
 
     # ------------------------------ auto-fill ------------------------------ #
     def autofill(
@@ -586,21 +758,19 @@ class TimetableService:
         room_ids: list[int],
         shift: str = "morning",
         limit: int | None = None,
+        semester: int | None = None,
     ) -> list[Assignment]:
-        """Greedily place every not-yet-scheduled section into a free slot.
+        """Greedily place every not-yet-scheduled class into a free slot.
 
-        Everything is resolved in memory first (rosters, teachers, capacities),
-        so the search is pure computation - a full week fills in milliseconds.
-        Sections with the largest enrolment are placed first, because they are
-        the hardest to fit.
+        Everything is resolved in memory first (rosters, teachers, capacities,
+        semesters, room types), so the search is pure computation - a full week
+        fills in milliseconds.  Labs are steered towards Lab rooms and the
+        hardest classes (largest enrolment) are placed first.
         """
         if not slots or not room_ids or days < 1:
             raise ValidationError("Generate a grid before using auto-fill.")
 
         with self.engine.connect() as conn:
-            sections = conn.execute(
-                select(course_sections.c.course_id, course_sections.c.section)
-            ).all()
             teacher_of = {
                 (r.course_id, r.section): r.instructor_id
                 for r in conn.execute(
@@ -610,7 +780,18 @@ class TimetableService:
             roster_of: dict[tuple[int, str], set[str]] = {}
             for row in conn.execute(select(enrollments.c.course_id, enrollments.c.section, enrollments.c.roll_number)):
                 roster_of.setdefault((row.course_id, row.section), set()).add(row.roll_number)
-            capacity_of = {r.id: r.capacity for r in conn.execute(select(rooms.c.id, rooms.c.capacity))}
+            room_rows = {
+                r.id: {"capacity": r.capacity, "room_type": r.room_type}
+                for r in conn.execute(select(rooms.c.id, rooms.c.capacity, rooms.c.room_type))
+            }
+            semester_of = {
+                r.id: int(r.semester or 0) for r in conn.execute(select(courses.c.id, courses.c.semester))
+            }
+
+        def group_of(course_id: int, section: str) -> tuple[int, str] | None:
+            """The student cohort: (semester, section).  None when unassigned."""
+            sem = semester_of.get(course_id, 0)
+            return (sem, str(section).upper()) if sem else None
 
         placed = [
             {
@@ -619,17 +800,18 @@ class TimetableService:
                 "end": a.end_min,
                 "room_id": a.room_id,
                 "key": (a.course_id, a.section),
+                "group": group_of(a.course_id, a.section),
             }
             for a in existing
         ]
-        already = {p["key"] for p in placed}
+        already = {(a.course_id, a.section.upper(), a.kind) for a in existing}
 
         todo = [
-            (course_id, section)
-            for course_id, section in sections
-            if (course_id, section) not in already
+            item for item in self.required_classes()
+            if (item["course_id"], str(item["section"]).upper(), item["kind"]) not in already
+            and (semester is None or item["semester"] == semester)
         ]
-        todo.sort(key=lambda key: -len(roster_of.get(key, ())))
+        todo.sort(key=lambda item: -len(roster_of.get((item["course_id"], item["section"]), ())))
         if limit:
             todo = todo[:limit]
 
@@ -642,9 +824,16 @@ class TimetableService:
             normalised_slots.append((start, end))
 
         created: list[Assignment] = []
-        for course_id, section in todo:
+        for item in todo:
+            course_id, section, kind = item["course_id"], item["section"], item["kind"]
             roster = roster_of.get((course_id, section), set())
             teacher = teacher_of.get((course_id, section))
+            group = group_of(course_id, section)
+            # Labs go to Lab rooms when any exist; lectures avoid them so the
+            # labs stay free.
+            preferred = [rid for rid in room_ids if room_rows.get(rid, {}).get("room_type") == "Lab"]
+            others = [rid for rid in room_ids if rid not in preferred]
+            candidates = (preferred + others) if kind == "lab" else (others + preferred)
             done = False
 
             for day in range(1, days + 1):
@@ -659,26 +848,28 @@ class TimetableService:
                         if p["day"] == day and overlaps(start_min, end_min, p["start"], p["end"])
                     ]
                     busy_rooms = {p["room_id"] for p in overlapping}
-                    clashes_person = any(
-                        (teacher is not None and teacher_of.get(p["key"]) == teacher)
+                    blocked = any(
+                        p["key"] == (course_id, section)
+                        or (group is not None and p["group"] == group)
+                        or (teacher is not None and teacher_of.get(p["key"]) == teacher)
                         or (roster and roster & roster_of.get(p["key"], set()))
                         for p in overlapping
                     )
-                    if clashes_person:
+                    if blocked:
                         continue
-                    for room_id in room_ids:
+                    for room_id in candidates:
                         if room_id in busy_rooms:
                             continue
-                        if roster and len(roster) > capacity_of.get(room_id, 0):
+                        if roster and len(roster) > room_rows.get(room_id, {}).get("capacity", 0):
                             continue
                         assignment = Assignment(
                             day=day, start_time=start, end_time=end, room_id=room_id,
-                            course_id=course_id, section=section, shift=shift,
+                            course_id=course_id, section=section, shift=shift, kind=kind,
                         )
                         created.append(assignment)
                         placed.append(
-                            {"day": day, "start": start_min, "end": end_min,
-                             "room_id": room_id, "key": (course_id, section)}
+                            {"day": day, "start": start_min, "end": end_min, "room_id": room_id,
+                             "key": (course_id, section), "group": group}
                         )
                         done = True
                         break
@@ -714,9 +905,13 @@ class TimetableService:
                 timetable_entries.c.course_id,
                 timetable_entries.c.section,
                 timetable_entries.c.shift,
+                timetable_entries.c.kind,
                 courses.c.name.label("course_name"),
                 courses.c.code,
                 courses.c.color,
+                courses.c.semester,
+                courses.c.credit_hours,
+                courses.c.lab_credit_hours,
                 rooms.c.room_number,
                 rooms.c.capacity,
                 rooms.c.room_type,
@@ -746,6 +941,8 @@ class TimetableService:
                 {
                     **dict(r),
                     "instructor": r.instructor or "Unassigned",
+                    "kind": r.kind or "theory",
+                    "semester": int(r.semester or 0),
                     "day_name": WEEKDAYS[int(r.day) - 1],
                     "room_label": f"{r.building_name}-{r.room_number}",
                 }
@@ -764,7 +961,14 @@ class TimetableService:
             course_rows = {
                 r.id: r
                 for r in conn.execute(
-                    select(courses.c.id, courses.c.code, courses.c.name, courses.c.color, courses.c.department)
+                    select(
+                        courses.c.id,
+                        courses.c.code,
+                        courses.c.name,
+                        courses.c.color,
+                        courses.c.department,
+                        courses.c.semester,
+                    )
                 )
             }
             room_rows = {
@@ -816,6 +1020,8 @@ class TimetableService:
                     "room_id": item.room_id,
                     "room_number": room.room_number if room else item.room_id,
                     "capacity": room.capacity if room else 0,
+                    "kind": item.kind,
+                    "semester": int(course.semester or 0) if course else 0,
                     "building_name": room.building_name if room else "",
                     "room_label": f"{room.building_name}-{room.room_number}" if room else str(item.room_id),
                     "course_id": item.course_id,

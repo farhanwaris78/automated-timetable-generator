@@ -62,7 +62,7 @@ def test_health_reports_seeded_stats(client):
 
 def test_courses_include_instructor_and_headcount(client):
     courses = client.get("/api/courses").get_json()
-    assert len(courses) == 45          # one row per course-section
+    assert len(courses) == 65          # 45 lectures + 20 labs
     sample = courses[0]
     for key in ("id", "name", "color", "section", "instructor", "num_students"):
         assert key in sample
@@ -452,7 +452,7 @@ def test_autofill_places_sections_without_any_clash(client):
         "room_ids": [1, 2, 3, 4, 5, 6], "shift": "morning",
     })
     created = response.get_json()["created"]
-    assert len(created) == 45                                    # every section placed
+    assert len(created) == 65                          # every lecture *and* every lab
     assert all(c["shift"] == "morning" for c in created)
 
     verdict = client.post("/api/timetable/validate", json={"assignments": created}).get_json()
@@ -495,13 +495,26 @@ def test_excel_export_has_one_sheet_per_day(client):
     import openpyxl
 
     workbook = openpyxl.load_workbook(_io.BytesIO(response.data))
-    assert workbook.sheetnames == [
+    names = workbook.sheetnames
+    assert names[:8] == [
         "Summary", "Monday", "Tuesday", "Wednesday", "Thursday",
-        "Friday", "Saturday", "Sunday", "By Teacher",
+        "Friday", "Saturday", "Sunday",
     ]
+    # one sheet per semester that actually has classes, then the roll-ups
+    assert [n for n in names if n.startswith("Semester ")] == ["Semester 1", "Semester 3"]
+    assert "By Teacher" in names and "Unscheduled" in names
+
     summary = workbook["Summary"]
-    assert [c.value for c in summary[1]][:4] == ["Day", "Shift", "Start", "End"]
+    assert [c.value for c in summary[1]][:6] == ["Day", "Shift", "Semester", "Type", "Start", "End"]
     assert summary.cell(row=2, column=1).value == "Monday"
+
+    semester = workbook["Semester 1"]
+    assert semester.cell(row=4, column=1).value == "Day / Section"
+    assert semester.cell(row=5, column=1).value.startswith("Monday")
+
+    gaps = workbook["Unscheduled"]
+    assert gaps.cell(row=3, column=1).value == "Semester"
+    assert gaps.cell(row=4, column=5).value in ("Theory", "Lab")
 
 
 @pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
@@ -868,3 +881,177 @@ def test_the_ui_no_longer_uses_blocking_browser_prompts():
     )
     assert "window.confirm(" not in js
     assert js.count("window.prompt(") <= 1        # only the clipboard fallback
+
+
+# ======================= v2.3: labs, semesters, gaps ========================= #
+def test_catalogue_lists_a_separate_card_for_every_lab(client):
+    catalogue = client.get("/api/courses").get_json()
+    labs = [c for c in catalogue if c["kind"] == "lab"]
+    assert labs, "the sample data should contain lab courses"
+    for lab in labs:
+        assert lab["has_lab"] is True
+        assert lab["hours"] == lab["lab_credit_hours"] >= 1
+        assert lab["key"].endswith(":lab")
+        assert lab["label"].endswith("(Lab)")
+        # the matching lecture exists too
+        assert any(
+            c["id"] == lab["id"] and c["section"] == lab["section"] and c["kind"] == "theory"
+            for c in catalogue
+        )
+
+
+def test_a_lab_cannot_be_scheduled_for_a_course_without_one(client):
+    theory = next(c for c in client.get("/api/courses").get_json() if not c["has_lab"])
+    verdict = client.post("/api/timetable/validate", json={
+        "candidate": {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+                      "course_id": theory["id"], "section": theory["section"], "kind": "lab"},
+        "grid": [],
+    }).get_json()
+    assert verdict["ok"] is False
+    assert "no lab component" in verdict["conflicts"][0]["message"]
+
+
+def test_a_lab_outside_a_lab_room_is_only_a_warning(client):
+    lab = next(c for c in client.get("/api/courses").get_json() if c["kind"] == "lab")
+    classroom = next(r for r in client.get("/api/rooms").get_json() if r["room_type"] != "Lab")
+    verdict = client.post("/api/timetable/validate", json={
+        "candidate": {"day": 2, "start_time": "08:30", "end_time": "09:50", "room_id": classroom["id"],
+                      "course_id": lab["id"], "section": lab["section"], "kind": "lab"},
+        "grid": [],
+    }).get_json()
+    assert verdict["ok"] is True                       # a warning never blocks
+    assert [c["kind"] for c in verdict["conflicts"]] == ["roomtype"]
+    assert verdict["conflicts"][0]["severity"] == "warning"
+
+
+def test_lecture_and_lab_of_one_section_cannot_overlap(client):
+    lab = next(c for c in client.get("/api/courses").get_json() if c["kind"] == "lab")
+    slot = {"day": 3, "start_time": "10:00", "end_time": "11:20",
+            "course_id": lab["id"], "section": lab["section"]}
+    verdict = client.post("/api/timetable/validate", json={
+        "candidate": dict(slot, room_id=2, kind="lab"),
+        "grid": [dict(slot, room_id=1, kind="theory")],
+    }).get_json()
+    assert verdict["ok"] is False
+    duplicate = next(c for c in verdict["conflicts"] if c["kind"] == "duplicate")
+    assert "same students attend both" in duplicate["message"]
+
+
+def test_two_courses_of_the_same_semester_and_section_clash(client):
+    catalogue = client.get("/api/courses").get_json()
+    first = next(c for c in catalogue if c["semester"] and c["kind"] == "theory")
+    second = next(
+        c for c in catalogue
+        if c["kind"] == "theory" and c["semester"] == first["semester"]
+        and c["section"] == first["section"] and c["id"] != first["id"]
+    )
+    verdict = client.post("/api/timetable/validate", json={
+        "candidate": {"day": 4, "start_time": "08:30", "end_time": "09:50", "room_id": 2,
+                      "course_id": second["id"], "section": second["section"]},
+        "grid": [{"day": 4, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+                  "course_id": first["id"], "section": first["section"]}],
+    }).get_json()
+    assert verdict["ok"] is False
+    kinds = [c["kind"] for c in verdict["conflicts"]]
+    assert "semester" in kinds
+    message = next(c for c in verdict["conflicts"] if c["kind"] == "semester")["message"]
+    assert f"Semester {first['semester']} section {first['section']}" in message
+
+
+def test_unscheduled_report_lists_missing_lectures_and_labs(client):
+    everything = client.post("/api/timetable/unscheduled", json={"assignments": []}).get_json()
+    assert everything["ok"] is False
+    assert everything["required"] == 65 == len(everything["missing"])
+    assert sum(everything["by_semester"].values()) == 65
+    assert {item["kind"] for item in everything["missing"]} == {"theory", "lab"}
+
+    created = client.post("/api/timetable/autofill", json={
+        "assignments": [], "days": 5,
+        "slots": [{"start": f"{8 + i * 2:02d}:30", "end": f"{9 + i * 2:02d}:50"} for i in range(4)],
+        "room_ids": [r["id"] for r in client.get("/api/rooms").get_json()][:14],
+    }).get_json()["created"]
+    filled = client.post("/api/timetable/unscheduled", json={"assignments": created}).get_json()
+    assert filled == {"ok": True, "required": 65, "missing": [], "by_semester": {}}
+
+    # ... and the saved timetable is used when no grid is supplied
+    client.post("/api/timetable", json={"assignments": created[:-2]})
+    saved = client.post("/api/timetable/unscheduled", json={}).get_json()
+    assert len(saved["missing"]) == 2
+
+
+def test_autofill_can_be_limited_to_one_semester(client):
+    created = client.post("/api/timetable/autofill", json={
+        "assignments": [], "days": 5, "semester": 3,
+        "slots": [{"start": "08:30", "end": "09:50"}, {"start": "10:00", "end": "11:20"}],
+        "room_ids": [1, 2, 3, 4, 5, 6],
+    }).get_json()["created"]
+    assert created
+    semesters = {
+        c["semester"] for c in client.get("/api/courses").get_json()
+        if any(c["id"] == entry["course_id"] for entry in created)
+    }
+    assert semesters == {3}
+
+
+def test_publish_pdf_accepts_a_semester_scope(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A"},
+    ]})
+    targets = client.get("/api/publish/targets").get_json()
+    assert targets["semesters"]
+    assert targets["unscheduled"] == 64
+
+    response = client.post("/api/publish/pdf", json={"scope": "semester", "days": 5})
+    assert response.status_code == 200
+    assert response.data.startswith(b"%PDF-1.4")
+
+    bad = client.post("/api/publish/pdf", json={"scope": "nonsense"})
+    assert bad.status_code == 400
+
+
+def test_course_editor_round_trips_the_lab_and_semester_fields(client):
+    created = client.post("/api/courses", json={
+        "code": "SE4001", "name": "Compiler Construction", "credit_hours": 3,
+        "semester": 6, "has_lab": "yes", "lab_credit_hours": 2,
+        "sections": [{"section": "A"}],
+    }).get_json()
+    assert created["semester"] == 6 and created["has_lab"] == 1 and created["lab_credit_hours"] == 2
+
+    catalogue = client.get("/api/courses").get_json()
+    mine = [c for c in catalogue if c["id"] == created["id"]]
+    assert sorted(c["kind"] for c in mine) == ["lab", "theory"]
+
+    # turning the lab off clears its credit hours and removes the lab card
+    updated = client.put(f"/api/courses/{created['id']}", json={
+        "code": "SE4001", "name": "Compiler Construction", "semester": 6, "has_lab": "",
+        "sections": [{"section": "A"}],
+    }).get_json()
+    assert updated["has_lab"] == 0 and updated["lab_credit_hours"] == 0
+    assert [c["kind"] for c in client.get("/api/courses").get_json() if c["id"] == created["id"]] == ["theory"]
+
+
+def test_import_template_carries_the_lab_and_semester_columns(client):
+    response = client.get("/api/import/template")
+    if response.status_code == 501:
+        pytest.skip("openpyxl is not installed")
+    import io as _io
+
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(_io.BytesIO(response.data))
+    headers = [cell.value for cell in workbook["Courses"][1]]
+    assert "Semester (1-12, blank = none)" in headers
+    assert "Has lab? (yes/no)" in headers
+    assert "Lab credit hours" in headers
+
+
+def test_the_shortcut_hints_are_no_longer_printed_on_the_controls():
+    """Alt+1 and friends belong in the F1 reference, not on every button."""
+    html = _read("timetable", "templates", "index.html")
+    controls = re.findall(r"<button[^>]*>.*?</button>", html, re.S)
+    assert controls
+    assert not [button for button in controls if "<kbd>" in button]
+    # but the reference itself still lists them
+    assert html.count("<kbd>") > 10
+    assert 'title="Morning shift (Alt+1)"' in html

@@ -255,13 +255,27 @@
   }
 
   /* ------------------------------- catalogue ------------------------------ */
-  function courseKey(courseId, section) { return courseId + ":" + section; }
+  /* A "class" is a course-section *and* a kind: the lecture and the lab of the
+     same section are two separate things to schedule. */
+  function courseKey(courseId, section, kind) {
+    return courseId + ":" + section + ":" + (kind || "theory");
+  }
 
-  function findCourse(courseId, section) {
+  function findCourse(courseId, section, kind) {
+    var fallback = null;
     for (var i = 0; i < state.courses.length; i++) {
-      if (state.courses[i].id === courseId && state.courses[i].section === section) return state.courses[i];
+      var course = state.courses[i];
+      if (course.id !== courseId || course.section !== section) continue;
+      if (!kind || (course.kind || "theory") === kind) return course;
+      if (!fallback) fallback = course;
     }
-    return null;
+    return fallback;
+  }
+
+  function isLab(item) { return (item && item.kind) === "lab"; }
+
+  function classLabel(course, section, kind) {
+    return (course && course.name ? course.name : "Course") + " - " + section + (kind === "lab" ? " (Lab)" : "");
   }
 
   function roomById(id) {
@@ -272,7 +286,7 @@
   /* Soft capacity check - computed locally so the warning appears instantly,
      and confirmed by the server on the next validation pass. */
   function capacityIssue(placement) {
-    var course = findCourse(placement.course_id, placement.section);
+    var course = findCourse(placement.course_id, placement.section, placement.kind);
     var room = roomById(placement.room_id);
     if (!course || !room || !room.capacity) return null;
     var enrolled = course.num_students || 0;
@@ -296,23 +310,107 @@
 
   function placedKeys() {
     var set = {};
-    state.placements.forEach(function (p) { set[courseKey(p.course_id, p.section)] = true; });
+    state.placements.forEach(function (p) { set[courseKey(p.course_id, p.section, p.kind)] = true; });
     return set;
+  }
+
+  function activeSemester() {
+    var select = $("#semesterFilter");
+    return select ? (parseInt(select.value, 10) || 0) : 0;
+  }
+
+  /* Keep the semester picker in step with whatever semesters the catalogue
+     actually uses, without losing the current choice. */
+  function fillSemesterFilter() {
+    var select = $("#semesterFilter");
+    if (!select) return;
+    var current = select.value;
+    var seen = {};
+    state.courses.forEach(function (course) { if (course.semester) seen[course.semester] = true; });
+    var values = Object.keys(seen).map(Number).sort(function (a, b) { return a - b; });
+    select.innerHTML = "";
+    select.appendChild(el("option", null, "All semesters"));
+    select.firstChild.value = "";
+    values.forEach(function (value) {
+      var option = el("option", null, "Semester " + value);
+      option.value = String(value);
+      select.appendChild(option);
+    });
+    select.value = values.indexOf(parseInt(current, 10)) === -1 ? "" : current;
+  }
+
+  /* Everything the catalogue says must be scheduled, minus what is on the grid.
+     Computed locally so the pill reacts the instant a card is dropped. */
+  function unscheduledClasses() {
+    var placed = placedKeys();
+    return state.courses.filter(function (course) {
+      return !placed[courseKey(course.id, course.section, course.kind)];
+    });
+  }
+
+  function showUnscheduledReport() {
+    var missing = unscheduledClasses();
+    var body = $("#unscheduledBody");
+    $("#unscheduledTitle").textContent = missing.length
+      ? "Not scheduled yet (" + missing.length + ")"
+      : "Everything is scheduled";
+    body.innerHTML = "";
+
+    if (!missing.length) {
+      body.appendChild(el("p", "muted",
+        "Every lecture and every lab in the catalogue has a place on the grid."));
+      openDialog("#unscheduledDialog");
+      return;
+    }
+
+    body.appendChild(el("p", "muted",
+      "These classes are in the catalogue but nowhere on the timetable. " +
+      "Drag them in, or press Auto-fill remaining to let the app place them."));
+
+    var groups = {};
+    missing.forEach(function (course) {
+      var key = course.semester ? "Semester " + course.semester : "No semester assigned";
+      (groups[key] = groups[key] || []).push(course);
+    });
+
+    Object.keys(groups).sort().forEach(function (key) {
+      body.appendChild(el("h4", null, key + " (" + groups[key].length + ")"));
+      var table = el("table", "mini-table");
+      var head = el("tr");
+      ["Code", "Course", "Section", "Type", "Teacher"].forEach(function (heading) {
+        head.appendChild(el("th", null, heading));
+      });
+      table.appendChild(head);
+      groups[key].forEach(function (course) {
+        var row = el("tr");
+        row.appendChild(el("td", null, course.code || "-"));
+        row.appendChild(el("td", null, course.name));
+        row.appendChild(el("td", null, course.section));
+        row.appendChild(el("td", isLab(course) ? "cell-lab" : null, isLab(course) ? "Lab" : "Theory"));
+        row.appendChild(el("td", null, course.instructor || "Unassigned"));
+        table.appendChild(row);
+      });
+      body.appendChild(table);
+    });
+    openDialog("#unscheduledDialog");
   }
 
   function renderCourses() {
     var host = $("#coursesList");
     var query = ($("#courseSearch").value || "").trim().toLowerCase();
     var hidePlaced = $("#hidePlaced").checked;
+    var semester = activeSemester();
     var placed = placedKeys();
 
     host.innerHTML = "";
     var shown = 0;
 
     state.courses.forEach(function (course) {
-      var isPlaced = !!placed[courseKey(course.id, course.section)];
+      var isPlaced = !!placed[courseKey(course.id, course.section, course.kind)];
       if (hidePlaced && isPlaced) return;
-      var haystack = [course.code, course.name, course.section, course.instructor, course.department]
+      if (semester && (course.semester || 0) !== semester) return;
+      var haystack = [course.code, course.name, course.section, course.instructor, course.department,
+        isLab(course) ? "lab" : "theory", course.semester ? "semester " + course.semester : ""]
         .join(" ").toLowerCase();
       if (query && haystack.indexOf(query) === -1) return;
 
@@ -322,23 +420,30 @@
       card.style.color = readableInk(course.color);
       card.dataset.courseId = course.id;
       card.dataset.section = course.section;
+      card.dataset.kind = course.kind || "theory";
+      if (isLab(course)) card.classList.add("is-lab");
       card.title = (course.code ? course.code + " · " : "") + course.name + " - " + course.section +
-        "\nTeacher: " + course.instructor + "\nStudents: " + course.num_students;
+        (isLab(course) ? " (Lab)" : "") +
+        "\nTeacher: " + course.instructor + "\nStudents: " + course.num_students +
+        (course.semester ? "\nSemester: " + course.semester : "\nSemester: not assigned") +
+        "\n" + (isLab(course) ? course.hours + " lab credit hour(s)" : course.credit_hours + " credit hour(s)");
 
       var title = el("div", "cc-title");
       if (course.code) title.appendChild(el("span", "cc-code", course.code));
       title.appendChild(document.createTextNode(course.name + " - " + course.section));
+      if (isLab(course)) title.appendChild(el("span", "kind-chip", "LAB"));
       card.appendChild(title);
 
       var meta = el("div", "cc-meta");
       meta.appendChild(el("span", null, course.instructor));
-      meta.appendChild(el("span", null, course.num_students + " std"));
+      meta.appendChild(el("span", null,
+        (course.semester ? "Sem " + course.semester + " · " : "") + course.num_students + " std"));
       card.appendChild(meta);
 
       card.addEventListener("dragstart", function (event) {
         event.dataTransfer.effectAllowed = "copy";
         event.dataTransfer.setData("text/plain", JSON.stringify({
-          type: "catalogue", course_id: course.id, section: course.section
+          type: "catalogue", course_id: course.id, section: course.section, kind: course.kind || "theory"
         }));
       });
 
@@ -563,15 +668,19 @@
   }
 
   function renderPlacement(placement) {
-    var course = findCourse(placement.course_id, placement.section) || {
+    var course = findCourse(placement.course_id, placement.section, placement.kind) || {
       name: "Course " + placement.course_id, color: "#dddddd", instructor: "", num_students: 0, code: ""
     };
     var conflicts = state.conflicts[placement.uid] || [];
     var hasError = conflicts.some(function (c) { return c.severity === "error"; });
     var capacity = capacityIssue(placement);
 
+    var semester = activeSemester();
+    var dimmed = semester && (course.semester || 0) !== semester;
     var node = el("div", "placed" + (hasError ? " has-conflict" : "") +
       (capacity && !hasError ? " has-warning" : "") +
+      (isLab(placement) ? " is-lab" : "") +
+      (dimmed ? " is-dimmed" : "") +
       (state.selectedUid === placement.uid ? " selected" : ""));
     node.draggable = true;
     node.dataset.uid = placement.uid;
@@ -581,9 +690,11 @@
     var title = el("div", "p-title");
     if (course.code) title.appendChild(el("span", "p-code", course.code));
     title.appendChild(document.createTextNode(course.name + " - " + placement.section));
+    if (isLab(placement)) title.appendChild(el("span", "kind-chip", "LAB"));
     node.appendChild(title);
     var meta = el("div", "p-meta");
-    meta.appendChild(document.createTextNode((course.instructor || "Unassigned") + " · " + course.num_students + " std"));
+    meta.appendChild(document.createTextNode((course.instructor || "Unassigned") +
+      (course.semester ? " · Sem " + course.semester : "") + " · " + course.num_students + " std"));
     node.appendChild(meta);
 
     if (capacity) {
@@ -643,6 +754,18 @@
       : "Every scheduled class fits in its room.";
     warnPill.style.cursor = overfull.length ? "pointer" : "default";
     warnPill.onclick = overfull.length ? showCapacityReport : null;
+
+    var missing = unscheduledClasses();
+    var missPill = $("#unscheduledPill");
+    if (missPill) {
+      missPill.textContent = missing.length
+        ? missing.length + " not scheduled"
+        : (state.courses.length ? "Everything scheduled" : "No courses yet");
+      missPill.className = "pill pill-button " + (missing.length ? "pill-warn" : "pill-ok");
+      missPill.title = missing.length
+        ? "Click for the full list of lectures and labs that still need a slot."
+        : "Every lecture and lab in the catalogue is on the grid.";
+    }
   }
 
   /* A single screen listing every class that does not fit its room, with a
@@ -666,7 +789,7 @@
       "They do not block saving - move them if you can."));
     var list = el("ul", "conflict-list");
     rows.forEach(function (row) {
-      var course = findCourse(row.placement.course_id, row.placement.section) || {};
+      var course = findCourse(row.placement.course_id, row.placement.section, row.placement.kind) || {};
       var item = el("li", "warning");
       item.appendChild(el("div", "conflict-kind",
         (course.code ? course.code + " " : "") + (course.name || "") + " - " + row.placement.section));
@@ -703,7 +826,7 @@
         end: cell.dataset.end,
         room_id: parseInt(cell.dataset.roomId, 10)
       };
-      if (payload.type === "catalogue") addPlacement(payload.course_id, payload.section, target);
+      if (payload.type === "catalogue") addPlacement(payload.course_id, payload.section, payload.kind, target);
       else if (payload.type === "placed") movePlacement(payload.uid, target);
     });
   }
@@ -715,7 +838,7 @@
     });
   }
 
-  function addPlacement(courseId, section, target) {
+  function addPlacement(courseId, section, kind, target) {
     if (occupied(target, null)) {
       toast("Slot taken", "That room is already booked for this time. Pick an empty cell.", "warning");
       return;
@@ -723,7 +846,8 @@
     snapshot();
     var placement = {
       uid: nextUid(), day: target.day, start: target.start, end: target.end,
-      room_id: target.room_id, course_id: courseId, section: section, shift: state.shift
+      room_id: target.room_id, course_id: courseId, section: section,
+      kind: kind === "lab" ? "lab" : "theory", shift: state.shift
     };
     state.placements.push(placement);
     state.dirty = true;
@@ -769,7 +893,8 @@
   function toAssignment(p) {
     return {
       day: p.day, start_time: p.start, end_time: p.end, room_id: p.room_id,
-      course_id: p.course_id, section: p.section, shift: p.shift || "morning"
+      course_id: p.course_id, section: p.section, kind: p.kind || "theory",
+      shift: p.shift || "morning"
     };
   }
 
@@ -839,9 +964,10 @@
   }
 
   function showConflictDialog(placement, conflicts) {
-    var course = findCourse(placement.course_id, placement.section) || { name: "Course " + placement.course_id };
+    var course = findCourse(placement.course_id, placement.section, placement.kind) ||
+      { name: "Course " + placement.course_id };
     var body = $("#courseDialogBody");
-    $("#courseDialogTitle").textContent = "Clash: " + course.name + " - " + placement.section;
+    $("#courseDialogTitle").textContent = "Clash: " + classLabel(course, placement.section, placement.kind);
     body.innerHTML = "";
     body.appendChild(el("p", "muted",
       WEEKDAYS[placement.day - 1] + ", " + to12h(placement.start) + " - " + to12h(placement.end)));
@@ -873,7 +999,13 @@
         html += "<dt>Code</dt><dd>" + escapeHtml(details.code || "-") + "</dd>";
         html += "<dt>Teacher</dt><dd>" + escapeHtml(details.instructor) + "</dd>";
         html += "<dt>Department</dt><dd>" + escapeHtml(details.department) + "</dd>";
-        html += "<dt>Credit hours</dt><dd>" + escapeHtml(details.credit_hours) + "</dd>";
+        var course = findCourse(placement.course_id, placement.section, placement.kind) || {};
+        html += "<dt>Type</dt><dd>" + (isLab(placement)
+          ? '<span class="kind-chip">LAB</span> Lab session'
+          : "Theory (lecture)") + "</dd>";
+        html += "<dt>Semester</dt><dd>" + escapeHtml(course.semester || "Not assigned") + "</dd>";
+        html += "<dt>Credit hours</dt><dd>" + escapeHtml(details.credit_hours) +
+          (course.has_lab ? " + " + escapeHtml(course.lab_credit_hours) + " lab" : "") + "</dd>";
         html += "<dt>Students</dt><dd>" + details.num_students + "</dd>";
         html += "<dt>Shift</dt><dd>" + escapeHtml(titleCase(placement.shift || "morning")) + "</dd>";
         html += "<dt>Slot</dt><dd>" + escapeHtml(WEEKDAYS[placement.day - 1] + ", " +
@@ -881,6 +1013,14 @@
         html += "<dt>Room</dt><dd>" + escapeHtml(room ? room.label + " (" + room.room_type + ", " +
           room.capacity + " seats)" : "-") + "</dd>";
         html += "</dl>";
+
+        if (course.has_lab) {
+          html += '<div class="kind-switch"><span>This slot is the</span>' +
+            '<button type="button" class="btn btn-mini" data-kind="theory"' +
+            (isLab(placement) ? "" : " disabled") + ">Theory</button>" +
+            '<button type="button" class="btn btn-mini" data-kind="lab"' +
+            (isLab(placement) ? " disabled" : "") + ">Lab</button></div>";
+        }
 
         if (conflicts.length) {
           html += '<h4>Clashes</h4><ul class="conflict-list">';
@@ -901,6 +1041,38 @@
           html += "<p class='muted'>No students are enrolled in this section yet.</p>";
         }
         body.innerHTML = html;
+
+        // Switching between the lecture and the lab re-validates the slot, so
+        // a move that would clash with the other half is refused immediately.
+        Array.prototype.forEach.call(body.querySelectorAll(".kind-switch button"), function (button) {
+          button.addEventListener("click", function () {
+            var wanted = button.dataset.kind;
+            if ((placement.kind || "theory") === wanted) return;
+            var placedAlready = placedKeys()[courseKey(placement.course_id, placement.section, wanted)];
+            if (placedAlready) {
+              toast("Already scheduled",
+                "The " + wanted + " of this section is already on the grid.", "warning");
+              return;
+            }
+            snapshot();
+            var previousKind = placement.kind || "theory";
+            placement.kind = wanted;
+            state.dirty = true;
+            renderGrid();
+            renderCourses();
+            updateCounters();
+            validatePlacement(placement, null).then(function (result) {
+              if (result && (result.conflicts || []).some(function (c) { return c.severity === "error"; })) {
+                placement.kind = previousKind;   // validatePlacement already removed it
+                return;
+              }
+              toast("Switched to " + wanted, classLabel(
+                findCourse(placement.course_id, placement.section, wanted), placement.section, wanted),
+                "success");
+            });
+            closeDialogs();
+          });
+        });
       })
       .catch(function (err) {
         body.innerHTML = '<p class="muted">Could not load details: ' + escapeHtml(err.message) + "</p>";
@@ -997,7 +1169,7 @@
         return {
           uid: nextUid(), day: entry.day, start: entry.start_time, end: entry.end_time,
           room_id: entry.room_id, course_id: entry.course_id, section: entry.section,
-          shift: entry.shift || "morning"
+          kind: entry.kind || "theory", shift: entry.shift || "morning"
         };
       });
       state.dirty = false;
@@ -1030,7 +1202,8 @@
         days: state.days,
         slots: slots,
         room_ids: state.gridRooms.map(function (room) { return room.id; }),
-        shift: state.shift
+        shift: state.shift,
+        semester: activeSemester() || null
       }
     }).then(function (result) {
       var created = result.created || [];
@@ -1042,12 +1215,14 @@
       created.forEach(function (entry) {
         state.placements.push({
           uid: nextUid(), day: entry.day, start: entry.start_time, end: entry.end_time,
-          room_id: entry.room_id, course_id: entry.course_id, section: entry.section, shift: entry.shift
+          room_id: entry.room_id, course_id: entry.course_id, section: entry.section,
+          kind: entry.kind || "theory", shift: entry.shift
         });
       });
       state.dirty = true;
       renderAll();
-      toast("Auto-filled", created.length + " section(s) placed. Review before saving.", "success");
+      toast("Auto-filled", created.length + " class(es) placed (lectures and labs). Review before saving.",
+        "success");
       revalidateAll({ silent: true });
     }).catch(function (err) { toast("Auto-fill failed", err.message, "error"); });
   }
@@ -1055,7 +1230,7 @@
   /* -------------------------------- exports ------------------------------- */
   function exportExcel() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
-    toast("Building workbook", "One worksheet per day…", "info", 2500);
+    toast("Building workbook", "One sheet per day and per semester…", "info", 2500);
     api("/api/export/xlsx", {
       method: "POST",
       raw: true,
@@ -1067,7 +1242,8 @@
       }
     }).then(function (blob) {
       downloadBlob(blob, "timetable.xlsx");
-      toast("Excel exported", "timetable.xlsx — Summary, one sheet per day, and By Teacher.", "success");
+      toast("Excel exported",
+        "timetable.xlsx — Summary, one sheet per day, one sheet per semester, By Teacher.", "success");
     }).catch(function (err) {
       toast("Excel export failed", err.message, "error");
     });
@@ -1151,7 +1327,7 @@
     if (scope === "teacher") {
       var names = {};
       state.placements.forEach(function (placement) {
-        var course = findCourse(placement.course_id, placement.section);
+        var course = findCourse(placement.course_id, placement.section, placement.kind);
         if (course && course.instructor) names[course.instructor] = true;
       });
       Object.keys(names).sort().forEach(function (name) {
@@ -1165,12 +1341,24 @@
         var key = placement.course_id + ":" + placement.section;
         if (seen[key]) return;
         seen[key] = true;
-        var course = findCourse(placement.course_id, placement.section) || {};
+        var course = findCourse(placement.course_id, placement.section, placement.kind) || {};
         var option = el("option", null, (course.code ? course.code + " " : "") +
           (course.name || placement.course_id) + " - " + placement.section);
         option.value = JSON.stringify({ course_id: placement.course_id, section: placement.section });
         select.appendChild(option);
       });
+    } else if (scope === "semester") {
+      var semesters = {};
+      state.placements.forEach(function (placement) {
+        var course = findCourse(placement.course_id, placement.section, placement.kind);
+        if (course && course.semester) semesters[course.semester] = true;
+      });
+      Object.keys(semesters).map(Number).sort(function (a, b) { return a - b; })
+        .forEach(function (value) {
+          var option = el("option", null, "Semester " + value);
+          option.value = JSON.stringify({ semester: value });
+          select.appendChild(option);
+        });
     } else if (scope === "room") {
       var rooms = {};
       state.placements.forEach(function (placement) { rooms[placement.room_id] = true; });
@@ -1340,6 +1528,7 @@
       state.buildings = results[3] || [];
       fillBuildingControls();
       fillTeacherSelect();
+      fillSemesterFilter();
       renderCourses();
       return true;
     });
@@ -1468,11 +1657,20 @@
     $("#courseName").value = course ? course.name : "";
     $("#courseDept").value = course ? course.department : "";
     $("#courseCredits").value = course ? course.credit_hours : 3;
+    $("#courseSemester").value = course ? String(course.semester || 0) : "0";
+    $("#courseHasLab").checked = !!(course && course.has_lab);
+    $("#courseLabCredits").value = (course && course.lab_credit_hours) ? course.lab_credit_hours : 1;
+    syncLabField();
     $("#courseColor").value = (course && course.color) ? course.color : "#a9d2e1";
     $("#courseSections").value = course ? (course.sections || []).map(function (s) { return s.section; }).join(", ") : "A";
     $("#courseTeacher").value = (course && course.sections && course.sections[0] && course.sections[0].instructor_id)
       ? course.sections[0].instructor_id : "";
     openDialog("#courseFormDialog");
+  }
+
+  function syncLabField() {
+    var on = $("#courseHasLab").checked;
+    $("#labHoursRow").hidden = !on;
   }
 
   function submitCourse(event) {
@@ -1490,6 +1688,9 @@
       name: $("#courseName").value,
       department: $("#courseDept").value,
       credit_hours: $("#courseCredits").value,
+      semester: $("#courseSemester").value,
+      has_lab: $("#courseHasLab").checked ? "yes" : "",
+      lab_credit_hours: $("#courseLabCredits").value,
       color: $("#courseColor").value,
       sections: sections
     };
@@ -1794,6 +1995,7 @@
     addTeacher: function () { openTeacherDialog(null); },
     addRoom: function () { openRoomDialog(null); },
     addCourse: function () { openCourseDialog(null); },
+    showUnscheduled: showUnscheduledReport,
     addBuilding: function () { openBuildingDialog(null); },
     addSection: function () { openSectionDialog(null); },
     manage: function () { openManage(); },
@@ -1927,6 +2129,11 @@
 
     $("#courseSearch").addEventListener("input", renderCourses);
     $("#hidePlaced").addEventListener("change", renderCourses);
+    $("#semesterFilter").addEventListener("change", function () {
+      renderCourses();
+      renderGrid();
+    });
+    $("#courseHasLab").addEventListener("change", syncLabField);
     $("#sidebarToggle").addEventListener("click", toggleSidebar);
 
     $("#teacherForm").addEventListener("submit", submitTeacher);

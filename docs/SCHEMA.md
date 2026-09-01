@@ -17,7 +17,7 @@ students ──< enrollments >────┘
 
 | Table | Key | Notes |
 |---|---|---|
-| `courses` | `id` | `name`, `color` (chip colour), `department` |
+| `courses` | `id` | `name`, `color` (chip colour), `department`, `credit_hours`, **`semester`** (0 = unassigned), **`has_lab`** (0/1), **`lab_credit_hours`** |
 | `course_sections` | `(course_id, section)` | the schedulable unit |
 | `instructors` | `id` | |
 | `courses_taught_by` | `(instructor_id, course_id, section)` | who teaches which section |
@@ -25,7 +25,7 @@ students ──< enrollments >────┘
 | `rooms` | `id` | `room_number` is text (`"108"`), unique per building, plus `capacity` |
 | `students` | `roll_number` | |
 | `enrollments` | `(roll_number, course_id, section)` | drives student-clash detection |
-| `timetable_entries` | `id` | `day` 1–7, `start_time`/`end_time` as `"HH:MM"` 24 h, `room_id`, `course_id`, `section`; **unique on `(day, start_time, room_id)`** |
+| `timetable_entries` | `id` | `day` 1–7, `start_time`/`end_time` as `"HH:MM"` 24 h, `room_id`, `course_id`, `section`, **`kind`** (`theory` \| `lab`); **unique on `(day, start_time, room_id)`** |
 | `app_settings` | `key` | grid preferences, so the app reopens as you left it |
 
 ## Design decisions
@@ -43,6 +43,15 @@ students ──< enrollments >────┘
 * **Cascade deletes** everywhere, so removing a course cannot leave orphaned
   timetable rows.
 * **Every write is parameterised** and wrapped in a transaction.
+
+## Labs and semesters (2.3)
+
+A **class** is a `(course, section, kind)` triple: the lecture and the lab of one
+section are scheduled separately but belong to the same students, so they may
+never overlap. `courses.semester` groups sections into student batches — a
+`(semester, section)` pair can only be in one room at a time, which is the
+*semester clash* rule. All four columns were added by additive migrations, so an
+existing database upgrades in place and every pre-2.3 entry reads as `theory`.
 
 ## Seed data
 

@@ -431,3 +431,20 @@ browser once the socket accepts connections.
 | Data | Save **and** load a timetable, CSV export, working PDF export, settings persistence |
 | Ops | Rotating log file, `/api/health`, graceful degraded mode, `--reset-database` |
 | Distribution | One-file .exe, Windows .msi, macOS .dmg (Intel + Apple Silicon), Linux .deb and .tar.gz, GitHub Actions release pipeline |
+
+
+---
+
+## Round 4 (v2.3) — defects found while adding labs and semesters
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| 35 | `services.list_courses` | The catalogue key was `course:section`, so a lab and its lecture would have collided in every "already placed" check. | The key is now `course:section:kind`; the whole front-end (`courseKey`, `placedKeys`, `findCourse`) was updated with it. |
+| 36 | `services.check_assignment` | The duplicate rule compared only course + section, so switching a block to *Lab* would silently look like the same class. | Duplicate now compares course + section + kind, and additionally rejects a lecture overlapping its own lab with a specific message ("the same students attend both"). |
+| 37 | `services.check_assignment` | Peer entries carried no semester, so a semester rule could not be evaluated for classes coming from an unsaved grid. | The peer lookup now resolves `courses.semester` alongside the name, for both saved rows and grid candidates. |
+| 38 | `services.autofill` | Placing purely by roster overlap allowed two classes of the same batch when their enrolments happened not to intersect (small sample rosters). | Auto-fill now also tracks a `(semester, section)` group per placement and refuses to reuse a slot for the same group. |
+| 39 | `exporters.build_workbook` | Nothing indicated a lab in the exported file. | `Summary` gained **Semester** and **Type** columns, day sheets and `By Teacher` mark labs `[LAB]`, and the column widths/alignment indices were re-derived (they were positional and would have shifted silently). |
+| 40 | `web.api_publish_pdf` | `scope` was validated against a hard-coded four-value list. | Extended to include `semester`; the invalid-scope path is covered by a test. |
+
+All six were found by tests written before the fix, and the suite grew from 83
+to **94 tests**.

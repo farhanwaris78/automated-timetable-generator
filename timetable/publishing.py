@@ -294,14 +294,16 @@ def _draw_table(
     pdf.text(margin, min(baseline, pdf.height - margin + 6), footer, size=7.5, color=GREY_TEXT)
 
 
-def _entry_cell(entry: dict[str, Any], *, show_room: bool = True) -> dict[str, Any]:
+def _entry_cell(entry: dict[str, Any], *, show_room: bool = True, show_section: bool = True) -> dict[str, Any]:
     code = entry.get("code") or ""
+    lab = " [LAB]" if entry.get("kind") == "lab" else ""
     notes = [str(entry.get("instructor") or "Unassigned")]
     if show_room:
         notes.append(str(entry.get("room_label") or ""))
+    section = f" ({entry['section']})" if show_section else ""
     return {
         "color": entry.get("color"),
-        "title": f"{code + ' ' if code else ''}{entry['course_name']} ({entry['section']})",
+        "title": f"{code + ' ' if code else ''}{entry['course_name']}{section}{lab}",
         "notes": [note for note in notes if note],
     }
 
@@ -322,6 +324,7 @@ def build_pdf(
         ``teacher``       - one page per teacher, days down the side
         ``section``       - one page per course section
         ``room``          - one page per room
+        ``semester``      - one page per semester, day x section rows
     Filter the ``entries`` before calling to publish a single teacher/section.
     """
     pdf = PdfCanvas(*A4_LANDSCAPE)
@@ -403,6 +406,42 @@ def build_pdf(
             groups.setdefault(str(entry.get("room_label") or entry["room_id"]), []).append(entry)
         for name in sorted(groups):
             personal(name, groups[name], f"{len(groups[name])} booking(s) per week")
+        return pdf.build(title)
+
+    if scope == "semester":
+        # The batch view: rows are (day, section) so parallel sections of the
+        # same semester are visible side by side and clashes jump out.
+        groups = {}
+        for entry in entries:
+            groups.setdefault(int(entry.get("semester") or 0), []).append(entry)
+        for semester in sorted(groups):
+            group_entries = groups[semester]
+            sections = sorted({str(e["section"]).upper() for e in group_entries})
+            pairs = [(day, section) for day in range(1, days + 1) for section in sections]
+            lookup = {
+                (int(e["day"]), str(e["section"]).upper(), e["start_time"]): e for e in group_entries
+            }
+            pdf.new_page()
+            _draw_table(
+                pdf,
+                title=f"{title} - Semester {semester}" if semester else f"{title} - Unassigned semester",
+                subtitle=(
+                    f"{len(group_entries)} class(es) - section(s) {', '.join(sections)} - "
+                    f"{len({e.get('instructor') for e in group_entries})} teacher(s)"
+                ),
+                row_labels=[WEEKDAYS[day - 1] for day, _ in pairs],
+                row_sublabels=[f"Section {section}" for _, section in pairs],
+                columns=columns,
+                cell_for=lambda row, column: (
+                    _entry_cell(
+                        lookup[(pairs[row][0], pairs[row][1], slots[column]["start"])],
+                        show_section=False,
+                    )
+                    if (pairs[row][0], pairs[row][1], slots[column]["start"]) in lookup
+                    else None
+                ),
+                footer=f"Generated {stamp} by Automated Timetable Generator",
+            )
         return pdf.build(title)
 
     raise ValueError(f"Unknown publish scope {scope!r}")
@@ -510,9 +549,10 @@ def filter_entries(
     course_id: int | None = None,
     section: str | None = None,
     room_id: int | None = None,
+    semester: int | None = None,
     shift: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Narrow a timetable down to one teacher / section / room / shift."""
+    """Narrow a timetable down to one teacher / section / room / semester."""
     result = entries
     if teacher:
         needle = teacher.strip().lower()
@@ -523,6 +563,8 @@ def filter_entries(
         result = [e for e in result if str(e["section"]).upper() == str(section).upper()]
     if room_id is not None:
         result = [e for e in result if int(e["room_id"]) == int(room_id)]
+    if semester:
+        result = [e for e in result if int(e.get("semester") or 0) == int(semester)]
     if shift and shift != "all":
         result = [e for e in result if (e.get("shift") or "morning") == shift]
     return result

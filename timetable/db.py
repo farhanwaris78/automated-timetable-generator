@@ -48,6 +48,12 @@ courses = Table(
     Column("color", String(20), nullable=False, server_default="#4c5caf"),
     Column("department", String(100), nullable=False, server_default="General"),
     Column("credit_hours", Integer, nullable=False, server_default="3"),
+    # A course may carry a lab component with its own credit hours.  The lab is
+    # scheduled as a separate class (kind="lab"), usually in a Lab room.
+    Column("has_lab", Integer, nullable=False, server_default="0"),
+    Column("lab_credit_hours", Integer, nullable=False, server_default="1"),
+    # Which semester of the degree this course belongs to (0 = unassigned).
+    Column("semester", Integer, nullable=False, server_default="0"),
 )
 
 course_sections = Table(
@@ -142,6 +148,7 @@ timetable_entries = Table(
     Column("course_id", Integer, nullable=False),
     Column("section", String(8), nullable=False),
     Column("shift", String(16), nullable=False, server_default="morning"),
+    Column("kind", String(10), nullable=False, server_default="theory"),   # theory | lab
     Column("created_at", String(32), nullable=False, server_default=""),
     CheckConstraint("day >= 1 AND day <= 7", name="ck_day_range"),
     UniqueConstraint("day", "start_time", "room_id", name="uq_room_slot"),
@@ -271,6 +278,9 @@ _MIGRATIONS: dict[str, dict[str, str]] = {
     "courses": {
         "code": "VARCHAR(24) NOT NULL DEFAULT ''",
         "credit_hours": "INTEGER NOT NULL DEFAULT 3",
+        "has_lab": "INTEGER NOT NULL DEFAULT 0",
+        "lab_credit_hours": "INTEGER NOT NULL DEFAULT 1",
+        "semester": "INTEGER NOT NULL DEFAULT 0",
     },
     "instructors": {
         "email": "VARCHAR(150) NOT NULL DEFAULT ''",
@@ -282,6 +292,7 @@ _MIGRATIONS: dict[str, dict[str, str]] = {
     },
     "timetable_entries": {
         "shift": "VARCHAR(16) NOT NULL DEFAULT 'morning'",
+        "kind": "VARCHAR(10) NOT NULL DEFAULT 'theory'",
     },
 }
 

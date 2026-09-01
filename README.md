@@ -52,7 +52,7 @@ in the searchable **Manage data** screen (<kbd>Alt+M</kbd>).
 |---|---|---|
 | Teacher | <kbd>Alt+T</kbd> | name, email, department, morning/evening/both |
 | Classroom | <kbd>Alt+R</kbd> | number, building, capacity, type (Classroom / Lab / Hall) |
-| Course | <kbd>Alt+C</kbd> | **course code**, title, department, credit hours, colour, sections |
+| Course | <kbd>Alt+C</kbd> | **course code**, title, department, credit hours, **semester**, **lab + lab credit hours**, colour, sections |
 | Building | <kbd>Alt+B</kbd> | name (rooms are grouped and filtered by it) |
 | Section | <kbd>Alt+S</kbd> | section letter + the teacher who takes it |
 | Manage all | <kbd>Alt+M</kbd> | tabbed, searchable, inline edit & delete |
@@ -68,12 +68,27 @@ by name / code and **updated rather than duplicated**, so the same file can be
 re-imported safely. Invalid rows are reported with their sheet and row number
 instead of aborting the import.
 
+### Labs & semesters
+Tick **“This course has a lab”** in the course editor and give it its own lab
+credit hours. Every section then shows **two cards** in the sidebar — the
+lecture and a `LAB` card — so they are scheduled independently, and a placed
+block can be flipped between Theory and Lab from its details dialog.
+
+Give each course a **semester** and the app treats a *semester + section* as one
+student batch: two of its classes can never share a slot. A semester picker in
+the toolbar narrows the sidebar and dims the rest of the grid, auto-fill can
+target a single semester, and both the Excel and PDF exports can be produced
+**semester by semester**.
+
 ### Scheduling
 * **Morning & evening shifts** with independent hours, sharing rooms and staff.
 * **Full 1–7 day week**, one tab per day (<kbd>1</kbd>…<kbd>7</kbd>).
 * **Drag & drop** onto a room × time grid; drag back to the list to unschedule.
-* **Auto-fill** (<kbd>Ctrl+Shift+A</kbd>) places every remaining section in a
-  conflict-free slot — 45/45 sample sections in milliseconds.
+* **Auto-fill** (<kbd>Ctrl+Shift+A</kbd>) places every remaining class in a
+  conflict-free slot — 65/65 sample classes (45 lectures + 20 labs) in
+  milliseconds — labs preferring `Lab` rooms, optionally one semester at a time.
+* **“*n* not scheduled”** pill: a live report, grouped by semester, of every
+  lecture and lab that still needs a slot.
 * **Undo / redo**, 100 steps, covering every action
   (<kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>).
 
@@ -81,16 +96,22 @@ instead of aborting the import.
 * 🔴 **room** double-booking (any overlap, not just identical slots)
 * 🔴 **instructor** teaching two sections at once
 * 🔴 **student** collisions — the affected **roll numbers are listed**
-* 🔴 duplicate placement of the same course-section
+* 🔴 duplicate placement of the same course-section — including its lecture
+  against its own lab
+* 🔴 **semester clash** — two classes of the same semester *and* section at once
+* 🔴 a lab placed on a course that has no lab
+* 🟠 a **lab outside a `Lab` room** — a warning, never a blocker
 * 🟠 **room too small** — an amber `⚠ 58/40` badge on the class, a counter in the
   toolbar, and a click-through report that suggests rooms which would fit.
   Capacity is a *warning*: it never blocks you from saving.
 
 ### Publish & share  <kbd>Ctrl+Shift+P</kbd>
-* **Excel** (<kbd>Ctrl+E</kbd>) — one colour-coded worksheet per day, plus
-  `Summary` (auto-filtered) and `By Teacher`, landscape and fit-to-width.
+* **Excel** (<kbd>Ctrl+E</kbd>) — one colour-coded worksheet per day, **one
+  worksheet per semester** (day × section), plus `Summary` (auto-filtered),
+  `By Teacher` and an `Unscheduled` sheet when something is missing; landscape
+  and fit-to-width.
 * **PDF** — master grid (one page per day), or **one page per teacher**, per
-  course section, or per room. Rendered by the app itself: vector text, real
+  course section, **per semester**, or per room. Rendered by the app itself: vector text, real
   page boxes, no browser print dialog and no third-party PDF library.
 * **iCalendar** — download a `.ics` file, or copy the live
   `http://localhost:PORT/calendar.ics?teacher=…` subscription link into Google
@@ -190,25 +211,26 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | status + row counts |
-| `GET` | `/api/courses` | catalogue (one row per course-section) |
+| `GET` | `/api/courses` | catalogue (one row per course-section **and kind**) |
 | `GET` | `/api/course-details/<id>/<section>` | instructor, roster, scheduled slots |
 | `GET` | `/api/rooms` · `/api/students` · `/api/student-enrollments` | reference data |
 | `GET` | `/api/timetable` | the saved week |
 | `POST` | `/api/timetable/validate` | check one placement or the whole grid |
 | `POST` | `/api/timetable` | save (atomic, rejects clashes with `409`) |
 | `POST` | `/api/timetable/reset` · `/api/database/reset` | clear / factory reset |
-| `POST` | `/api/timetable/autofill` | fill the remaining sections automatically |
+| `POST` | `/api/timetable/autofill` | fill the remaining classes automatically (optional `semester`) |
+| `POST` | `/api/timetable/unscheduled` | lectures and labs that are not on the grid |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/instructors[/<id>]` | teachers |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/buildings[/<id>]` | buildings |
 | `POST`/`PUT`/`DELETE` | `/api/rooms[/<id>]` | classrooms |
 | `GET` | `/api/admin/courses` | courses with their sections and teachers |
 | `POST`/`PUT`/`DELETE` | `/api/courses[/<id>]` | courses and course codes |
 | `POST`/`DELETE` | `/api/courses/<id>/sections[/<section>]` | sections |
-| `POST` | `/api/export/xlsx` | Excel workbook, one sheet per day |
+| `POST` | `/api/export/xlsx` | Excel workbook: one sheet per day *and* per semester |
 | `GET` | `/api/import/template` | blank import workbook |
 | `POST` | `/api/import/xlsx` | bulk import (multipart `file`) → per-row report |
 | `GET` | `/api/publish/targets` | teachers / sections / rooms that have classes |
-| `POST` | `/api/publish/pdf` | PDF, `scope` = `all` \| `teacher` \| `section` \| `room` |
+| `POST` | `/api/publish/pdf` | PDF, `scope` = `all` \| `teacher` \| `section` \| `semester` \| `room` |
 | `POST` | `/api/publish/ics` | downloadable `.ics` |
 | `GET` | `/calendar.ics?teacher=…&weeks=…` | live calendar subscription feed |
 | `GET`/`POST` | `/api/settings` | grid preferences |
@@ -252,7 +274,7 @@ cell with itself so it never found anything.
 * Constraint-solver auto-fill (teacher availability windows, "no 3 lectures in a
   row", minimise gaps) that explains why a section could not be placed
 * Student enrolment editor and per-student timetables
-* Lab sessions spanning several consecutive slots
+* Lab sessions spanning several consecutive slots in one block
 * Multi-user mode: shared Postgres backend, logins, audit trail
 * Automatic timestamped backups of `timetable.db` with one-click restore
 * Signed Windows installers and notarised macOS builds

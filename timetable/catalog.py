@@ -264,6 +264,15 @@ class CatalogService:
         name = _text(payload.get("name"), "Course name", max_length=255)
         department = _text(payload.get("department"), "Department", max_length=100, required=False, default="General") or "General"
         credit_hours = _int(payload.get("credit_hours"), "Credit hours", minimum=0, maximum=12, default=3)
+        has_lab = 1 if str(payload.get("has_lab") or "").strip().lower() in ("1", "true", "yes", "on") else 0
+        lab_credit_hours = _int(
+            payload.get("lab_credit_hours"), "Lab credit hours", minimum=0, maximum=6, default=1
+        )
+        if has_lab and lab_credit_hours < 1:
+            raise ValidationError("A lab needs at least 1 credit hour.")
+        if not has_lab:
+            lab_credit_hours = 0
+        semester = _int(payload.get("semester"), "Semester", minimum=0, maximum=12, default=0)
         color = str(payload.get("color") or "").strip()
         if not color:
             color = PALETTE[abs(hash(code.upper())) % len(PALETTE)]
@@ -275,6 +284,9 @@ class CatalogService:
             "name": name,
             "department": department,
             "credit_hours": credit_hours,
+            "has_lab": has_lab,
+            "lab_credit_hours": lab_credit_hours,
+            "semester": semester,
             "color": color,
         }
         with self.engine.begin() as conn:

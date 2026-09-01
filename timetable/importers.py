@@ -35,8 +35,11 @@ TEMPLATE: dict[str, tuple[list[str], list[list[Any]]]] = {
         [["301", "A", 60, "Classroom"], ["Lab-2", "B", 30, "Lab"]],
     ),
     "Courses": (
-        ["Code", "Title", "Department", "Credit hours", "Colour (#RRGGBB)"],
-        [["CS3009", "Artificial Intelligence", "Computer Science", 3, "#A9D2E1"]],
+        [
+            "Code", "Title", "Department", "Credit hours", "Colour (#RRGGBB)",
+            "Semester (1-12, blank = none)", "Has lab? (yes/no)", "Lab credit hours",
+        ],
+        [["CS3009", "Artificial Intelligence", "Computer Science", 3, "#A9D2E1", 5, "yes", 1]],
     ),
     "Sections": (
         ["Course code", "Section", "Teacher name or email"],
@@ -76,7 +79,7 @@ def build_template() -> bytes:
             "      Teachers  -> by name (or email)",
             "      Buildings -> by name",
             "      Rooms     -> by building + room number",
-            "      Courses   -> by course code",
+            "      Courses   -> by course code (semester and lab settings are updated too)",
             "      Sections  -> by course code + section",
             "5. A row that fails validation is reported and skipped; the rest still import.",
         ],
@@ -274,6 +277,7 @@ def import_workbook(catalog: CatalogService, data: bytes) -> dict[str, Any]:
                 found = conn.execute(
                     select(courses.c.id).where(func.upper(courses.c.code) == code.upper())
                 ).first()
+            has_lab = _cell(row, 6).strip().lower() in ("1", "y", "yes", "true", "lab")
             catalog.save_course(
                 {
                     "code": code,
@@ -281,6 +285,9 @@ def import_workbook(catalog: CatalogService, data: bytes) -> dict[str, Any]:
                     "department": _cell(row, 2),
                     "credit_hours": _cell(row, 3) or 3,
                     "color": _cell(row, 4),
+                    "semester": _cell(row, 5) or 0,
+                    "has_lab": "yes" if has_lab else "",
+                    "lab_credit_hours": (_cell(row, 7) or 1) if has_lab else 0,
                 },
                 found.id if found else None,
             )
