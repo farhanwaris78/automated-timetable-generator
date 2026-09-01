@@ -1,0 +1,112 @@
+name: Build desktop installers
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- tests ---
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Run the test suite
+        run: python -m pytest -q
+
+  # ------------------------------------------------------------- packaging ---
+  build:
+    name: Package (${{ matrix.label }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+            targets: exe portable msi
+          - os: ubuntu-22.04            # oldest glibc => widest Linux support
+            label: linux-x64
+            targets: exe portable deb
+          - os: macos-13                # Intel
+            label: macos-x64
+            targets: exe portable dmg
+          - os: macos-14                # Apple Silicon
+            label: macos-arm64
+            targets: exe portable dmg
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pytest pillow
+
+      - name: Install cx_Freeze (MSI only)
+        if: runner.os == 'Windows'
+        run: pip install cx_Freeze
+
+      - name: Refresh icons
+        run: python packaging/make_icons.py
+
+      - name: Build ${{ matrix.targets }}
+        run: python packaging/build.py ${{ matrix.targets }}
+
+      - name: List artifacts
+        shell: bash
+        run: ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timetable-generator-${{ matrix.label }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.msi
+            dist/*.dmg
+            dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  # --------------------------------------------------------------- release ---
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          # Attach the installers to the release that already exists for this
+          # tag, without touching its notes.
+          files: artifacts/**/*
+          fail_on_unmatched_files: true
