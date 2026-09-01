@@ -64,7 +64,10 @@
         <p class="empty">Loading courses&hellip;</p>
       </div>
       <button type="button" class="btn btn-block" data-action="addCourse" title="Add course (Alt+C)">+ Add course</button>
-      <p class="sidebar-foot">Drag a course onto a free slot. Drag it back here to unschedule.</p>
+      <p class="sidebar-foot">
+        Drag a course onto a free slot, then drag it back here to unschedule.
+        No mouse? Press <kbd>Enter</kbd> on a course to pick it up, then <kbd>Enter</kbd> on a slot to place it.
+      </p>
     </aside>
 
     <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true"
@@ -524,8 +527,9 @@
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             </button>
-            <code id="fsPath" class="fs-path" title="Current folder"></code>
+            <nav id="fsPath" class="fs-path" aria-label="Current folder"></nav>
             <span class="grow"></span>
+            <span id="fsWritable" class="pill pill-warn fs-writable" hidden>Read-only folder</span>
             <button type="button" id="fsRefreshBtn" class="btn icon-square" title="Refresh this folder">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -547,15 +551,36 @@
             <button type="button" class="btn btn-primary" id="fsNewFolderCreate">Create folder</button>
             <button type="button" class="btn" id="fsNewFolderCancel">Cancel</button>
           </div>
-          <div id="fsList" class="fs-list" role="listbox" aria-label="Folders and project files">
-            <p class="muted">Loading&hellip;</p>
+
+          <!-- Drives + shortcuts on the left, folder contents on the right:
+               the layout every desktop Save-as dialog uses. -->
+          <div class="fs-body">
+            <aside id="fsPlaces" class="fs-places" aria-label="Drives and shortcuts"></aside>
+            <div id="fsList" class="fs-list" role="listbox" aria-label="Folders and project files">
+              <p class="muted">Loading&hellip;</p>
+            </div>
           </div>
+          <p class="hint" id="fsTypePath">
+            Tip: you can browse to <em>any</em> folder on <em>any</em> drive — this app is no longer limited
+            to your user folder. Exports (Excel, PDF, CSV, calendar) are written next to your project file.
+          </p>
+          <code id="fsSaveTarget" class="fs-save-target" hidden></code>
         </div>
 
         <div class="project-name-row">
           <label for="projectNameInput">Project name</label>
           <input type="text" id="projectNameInput" maxlength="120" autocomplete="off"
             placeholder="e.g. Spring 2026 timetable">
+          <div id="projectSampleRow" class="project-sample-row" hidden>
+            <label class="checkline" for="projectSampleData">
+              <input type="checkbox" id="projectSampleData">
+              <span>
+                <strong>Load the sample university instead of an empty project</strong>
+                <small>Leave this unticked for a completely blank workspace — no courses, teachers,
+                  buildings, rooms, students or scheduled classes.</small>
+              </span>
+            </label>
+          </div>
           <p class="hint" id="projectHint"></p>
         </div>
       </div>

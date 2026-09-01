@@ -81,6 +81,12 @@ backups) lives in one per-user folder; uninstalling leaves nothing behind.
 > sample university so you can try every feature immediately. Press
 > <kbd>F1</kbd> for the shortcut list, or **Manage data → …** to replace the
 > sample with your own.
+>
+> **Starting your own institute?** Press <kbd>Ctrl+N</kbd>. A **new project is
+> completely blank** — no courses, teachers, buildings, rooms, students or
+> scheduled classes — so you never have to delete somebody else's demo data
+> first. (Tick *“Load the sample university”* in that dialog if you do want
+> the demo back.)
 
 ---
 
@@ -91,9 +97,19 @@ backups) lives in one per-user folder; uninstalling leaves nothing behind.
   (<kbd>Ctrl+S</kbd>) and **Save as** (<kbd>Ctrl+Shift+S</kbd>) a **project**:
   one portable `.ttproj` file that carries the teachers, buildings, rooms,
   courses, sections, students, the saved timetable and the grid preferences.
-* The in-app folder browser gives you **Up to the previous folder** and
-  **New folder** as proper **icon buttons** (arrow-up and folder-plus logos)
-  and lists projects with size and modified date.
+* **Save anywhere on the computer.** The folder browser reaches **every drive
+  and volume** — `C:\`, `D:\`, a USB stick, a network share, `/Volumes/…`,
+  `/mnt/…` — with a drives-and-shortcuts sidebar (Desktop, Documents,
+  Downloads, OneDrive), clickable breadcrumbs and **Up to the previous
+  folder** / **New folder** icon buttons. You can walk *above* your user
+  folder all the way to the drive root; nothing is locked to
+  `C:\Users\<name>` any more.
+* Folders are **checked for write permission before** you save, so a read-only
+  location is greyed out with an explanation instead of failing afterwards,
+  and the dialog always shows the exact file that **Save** will create.
+* **A new project is completely empty** — no courses, teachers, buildings,
+  rooms, students, enrolments or scheduled classes — with an opt-in tick-box
+  if you would rather start from the bundled sample university.
 * Opening or starting a new project keeps an **automatic safety backup** of
   your current database (last 10 kept); project files are written atomically.
 * A **Recent** list remembers the last ten projects, deduplicated, and lets
@@ -172,6 +188,12 @@ target a single semester, and both the Excel and PDF exports can be produced
   `http://localhost:PORT/calendar.ics?teacher=…` subscription link into Google
   Calendar, Outlook or Apple Calendar and the timetable keeps itself up to date.
 * **CSV** and a print stylesheet as well.
+* **Everything is written next to your project file.** Once a project is saved
+  to, say, `D:\Timetables\Spring 2026.ttproj`, the Excel workbook, PDFs, CSV
+  and calendar all land in `D:\Timetables\` — not in your browser's Downloads
+  folder. Existing files are never silently overwritten: a second export
+  becomes `timetable (2).xlsx`, exactly like Windows Explorer. (Before a
+  project has been saved anywhere, exports simply download as before.)
 
 ### Everything else
 * **Discoverable shortcuts** — <kbd>F1</kbd> lists all 29, generated from the
@@ -270,12 +292,14 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | status + row counts |
-| `GET` | `/api/project` | current project + recent projects + home folder |
-| `POST` | `/api/project/new` | fresh project (automatic safety backup) |
+| `GET` | `/api/project` | current project, recents, drives, shortcuts, export folder |
+| `POST` | `/api/project/new` | new **blank** project (`{"sample": true}` for demo data); automatic safety backup |
 | `POST` | `/api/project/save` | save the whole database as a `.ttproj` file |
 | `POST` | `/api/project/open` | load a `.ttproj` file (automatic safety backup) |
 | `DELETE` | `/api/project/recent` | remove an entry from the recent list |
-| `GET` | `/api/fs/list` | folders + `.ttproj` files inside the home folder |
+| `GET` | `/api/fs/list` | folders + `.ttproj` files in **any** folder on any drive |
+| `GET` | `/api/fs/roots` | drives / volumes + Desktop / Documents / Downloads shortcuts |
+| `POST` | `/api/fs/check` | is a folder writable? (used to pre-validate Save) |
 | `POST` | `/api/fs/mkdir` | create a folder in the in-app browser |
 | `GET` | `/api/courses` | catalogue (one row per course-section **and kind**) |
 | `GET` | `/api/course-details/<id>/<section>` | instructor, roster, scheduled slots |
@@ -292,7 +316,8 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 | `GET` | `/api/admin/courses` | courses with their sections and teachers |
 | `POST`/`PUT`/`DELETE` | `/api/courses[/<id>]` | courses and course codes |
 | `POST`/`DELETE` | `/api/courses/<id>/sections[/<section>]` | sections |
-| `POST` | `/api/export/xlsx` | Excel workbook: one sheet per day *and* per semester |
+| `POST` | `/api/export/xlsx` | Excel workbook: one sheet per day *and* per semester (`folder` ⇒ saved to disk) |
+| `POST` | `/api/export/csv` | CSV of the whole timetable (`folder` ⇒ saved to disk) |
 | `GET` | `/api/import/template` | blank import workbook |
 | `POST` | `/api/import/xlsx` | bulk import (multipart `file`) → per-row report |
 | `GET` | `/api/publish/targets` | teachers / sections / rooms that have classes |

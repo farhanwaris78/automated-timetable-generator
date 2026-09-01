@@ -320,3 +320,66 @@ def build_workbook(
     stream = io.BytesIO()
     workbook.save(stream)
     return stream.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# CSV
+# --------------------------------------------------------------------------- #
+CSV_HEADERS = [
+    "Day",
+    "Shift",
+    "Start",
+    "End",
+    "Room",
+    "Building",
+    "Room type",
+    "Capacity",
+    "Code",
+    "Course",
+    "Section",
+    "Kind",
+    "Teacher",
+    "Semester",
+    "Students",
+]
+
+
+def build_csv(entries: list[dict[str, Any]]) -> bytes:
+    """Render the timetable as UTF-8 CSV bytes.
+
+    Written server-side (rather than stitched together in JavaScript) so the
+    CSV can be saved straight into the project folder, contains exactly the
+    same columns as the workbook, and is correctly quoted for Excel.  A UTF-8
+    BOM is included so Excel opens accented names correctly on Windows.
+    """
+    import csv
+
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\r\n", quoting=csv.QUOTE_ALL)
+    writer.writerow(CSV_HEADERS)
+
+    def sort_key(entry: dict[str, Any]) -> tuple[int, int]:
+        return int(entry.get("day") or 0), to_minutes(str(entry.get("start_time") or "00:00"))
+
+    for entry in sorted(entries, key=sort_key):
+        day = int(entry.get("day") or 0)
+        writer.writerow(
+            [
+                WEEKDAYS[day - 1] if 1 <= day <= len(WEEKDAYS) else day,
+                str(entry.get("shift") or "morning").title(),
+                format_12h(str(entry.get("start_time") or "")),
+                format_12h(str(entry.get("end_time") or "")),
+                entry.get("room_label") or entry.get("room_id") or "",
+                entry.get("building_name") or entry.get("building") or "",
+                entry.get("room_type") or "",
+                entry.get("capacity") or "",
+                entry.get("code") or "",
+                entry.get("course_name") or "",
+                entry.get("section") or "",
+                "Lab" if entry.get("kind") == "lab" else "Theory",
+                entry.get("instructor") or "Unassigned",
+                entry.get("semester") or "",
+                entry.get("num_students") or 0,
+            ]
+        )
+    return "\ufeff".encode("utf-8") + buffer.getvalue().encode("utf-8")

@@ -448,3 +448,40 @@ browser once the socket accepts connections.
 
 All six were found by tests written before the fix, and the suite grew from 83
 to **94 tests**.
+
+---
+
+## Round 5 — defects reported against 2.0.1 (fixed in 2.0.2)
+
+Three user-visible failures, plus everything found while fixing them.
+
+### The big three
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| 41 | `static/app.js` — catalogue cards vs grid cells | **Courses could not be dropped onto the timetable at all.** The cards set `effectAllowed = "copy"`; the cells replied `dropEffect = "move"`. The HTML5 DnD model cancels a drop whose `dropEffect` is not allowed by `effectAllowed`, so the browser discarded every drop and the card sprang back. | Both ends negotiate compatibly: sources advertise `copyMove`, targets choose `copy` for a new class and `move` for an existing one. |
+| 42 | `static/app.js` — `wireDropTarget` | Only `dragover` called `preventDefault()`. Chromium decides whether an element is a drop target on the **first `dragenter`**, so the cell was rejected before `dragover` ever fired. | `dragenter` and `dragover` both accept the drag. |
+| 43 | `static/app.js` — `readDragPayload` | The payload was read back from `dataTransfer.getData()`, which returns `""` during a drag (protected mode) and also on `drop` inside WebView2 / WKWebView — i.e. exactly the desktop window the app ships as. | The payload is held in a module variable for the lifetime of the drag; `dataTransfer` is retained only as a fallback for drags originating outside the page. |
+| 44 | `web.home_dir` / `_resolve_home_path` | The file browser was hard-confined to `Path.home()`, so a project could not be saved to another drive, a USB stick or a network share, and **Up** stopped dead at `C:\Users\<name>`. | Replaced by `timetable/filesystem.py`: every drive/volume is browsable, `parent` is computed down to the drive root, and confinement became opt-in (`TTG_SANDBOX_HOME` / `TTG_SANDBOX_ROOT`) for kiosk machines. |
+| 45 | `web.api_export_xlsx`, `api_publish_pdf`, `api_publish_ics`, `app.js` | Every export was streamed as a browser download, so files scattered into `Downloads` instead of living with the project. | All export routes accept a `folder`; the front end passes the folder the project was saved in. Writes are atomic and auto-rename rather than clobber. |
+| 46 | `projects.new_project` | **New project** loaded the bundled sample university, so starting a real institute meant deleting 18 courses, 27 teachers, 36 rooms and 20 students by hand. | `new_project(..., blank=True)` is the default and rebuilds an empty schema; the sample data is an explicit opt-in. |
+
+### Found while fixing the above
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| 47 | `static/app.js` — drop highlights | Nested elements inside a cell fire `dragleave` when the pointer crosses a child, stranding the `.dragover` class. | Enter/leave are depth-counted per cell, and a global `dragend`/`drop`/`blur` handler clears every highlight. |
+| 48 | `static/app.js` — document-level drop | Dropping a card on a non-target let the browser navigate to the dragged text, blanking the whole application. | A document-level `drop`/`dragover` handler cancels stray drops. |
+| 49 | `static/app.js` — occupied slots | A booked slot only revealed itself *after* the drop, via a "Slot taken" toast. | Occupied cells turn red with a `no-drop` cursor during `dragenter`. |
+| 50 | `static/app.js` — accessibility | Scheduling was mouse-only; cards and cells were not focusable or labelled. | Enter/Space picks a class up, Enter/click on a cell places it, Esc cancels; both are focusable with ARIA labels. |
+| 51 | `filesystem.is_writable` | `os.access(W_OK)` ignores ACLs and read-only shares on Windows, so a save could still fail after being "validated". | Writability is probed by creating and deleting a real file, and checked *before* the save is attempted. |
+| 52 | `web.api_fs_mkdir` | Folder names were checked only for `/`, `\` and length, allowing Windows-illegal characters and reserved device names (`CON`, `LPT1`) that fail at the filesystem layer. | Central `validate_name()` rejects all illegal characters, control characters and reserved names with a readable message. |
+| 53 | `exporters` — CSV | CSV was assembled in JavaScript with fewer columns than the workbook and no room/building metadata. | `build_csv()` is server-side, shares the workbook's columns (adding Building, Room type, Capacity, Kind, Semester), quotes correctly and emits a UTF-8 BOM for Excel. |
+| 54 | `exporters.build_csv` | The first draft read `entry["building"]`, but the service returns `building_name`, so the column was silently blank. | Reads `building_name` with a fallback; asserted by a test. |
+| 55 | `web._deliver` | Writing an export directly to its final path could leave a truncated file if the disk filled or the app crashed mid-write. | Written to a `.part` file and atomically renamed, with cleanup on failure. |
+| 56 | `app.js` — `generateGrid` | With no rooms (i.e. a brand-new blank project) the grid raised a red "No rooms" error, treating the normal starting state as a failure. | Distinguishes "no rooms exist yet" (guided checklist + friendly hint) from "filters hide every room" (warning). |
+| 57 | `web.api_project_new` | The previous project's grid preferences survived into a new blank project, restoring a shift/room layout for rooms that no longer existed. | The `grid` setting is cleared as part of creating a blank project. |
+
+Rounds 1–5 total **57 defects**. The suite grew from 110 to **128 Python
+tests**, plus **22 front-end drag-and-drop checks** in `tests/frontend/` that
+fail against the 2.0.1 build.

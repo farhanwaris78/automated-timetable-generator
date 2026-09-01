@@ -28,6 +28,10 @@ packaging/icon.iconset/
 *.db-shm
 *.log
 
+# Node (front-end test harness only)
+node_modules/
+package-lock.json
+
 # OS noise
 .DS_Store
 Thumbs.db

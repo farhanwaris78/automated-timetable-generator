@@ -368,14 +368,32 @@ def open_project(engine, path: str | Path, data_dir: Path, database_url: str) ->
     return project
 
 
-def new_project(engine, data_dir: Path, database_url: str, name: str) -> dict[str, Any]:
-    """Start over with a clean, freshly seeded database."""
+def new_project(
+    engine,
+    data_dir: Path,
+    database_url: str,
+    name: str,
+    *,
+    blank: bool = True,
+) -> dict[str, Any]:
+    """Start a brand-new project.
+
+    ``blank=True`` (the default) gives a **completely empty** workspace - no
+    courses, teachers, buildings, rooms, students, enrolments or scheduled
+    classes - which is what people actually want when they start their own
+    institute's timetable.  ``blank=False`` loads the bundled sample
+    university instead, for anyone who wants to explore the app first.
+
+    A safety backup of the current working database is always taken first, so
+    "New" is never destructive in practice.
+    """
     from .db import reset_database
 
     backup_working_database(database_url, data_dir)
-    reset_database(engine)
+    reset_database(engine, seed=not blank)
     return {
         "ok": True,
         "name": (name or "Untitled project").strip() or "Untitled project",
         "path": None,
+        "blank": bool(blank),
     }

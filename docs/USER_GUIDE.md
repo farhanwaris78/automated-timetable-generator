@@ -203,11 +203,15 @@ saved timetable, optionally limited to a single teacher, section or room.
 
 ## Step by step
 
-0. **Create (or open) a project** — <kbd>Ctrl+N</kbd> starts from the sample
-   data, <kbd>Ctrl+O</kbd> opens an existing `.ttproj`, and
-   <kbd>Ctrl+Shift+S</kbd> saves it anywhere on disk (the built-in browser has
-   *Up* and *New folder* as icon buttons). Use <kbd>Ctrl+S</kbd> whenever you
-   want to save; it stores the grid on screen together with all your data.
+0. **Create (or open) a project** — <kbd>Ctrl+N</kbd> creates a **completely
+   blank** project (no courses, teachers, buildings, rooms or classes; tick
+   *“Load the sample university”* if you want the demo data instead),
+   <kbd>Ctrl+O</kbd> opens an existing `.ttproj`, and <kbd>Ctrl+Shift+S</kbd>
+   saves it **anywhere on any drive** — the built-in browser lists every drive
+   and volume with Desktop / Documents / Downloads shortcuts, clickable
+   breadcrumbs and *Up* / *New folder* icon buttons. Use <kbd>Ctrl+S</kbd>
+   whenever you want to save; it stores the grid on screen together with all
+   your data.
 1. **Set the working week** — days per week, the start/end of the teaching day,
    class length and the break between classes. Optionally restrict the grid to
    one building and cap how many rooms are shown.
@@ -229,7 +233,11 @@ saved timetable, optionally limited to a single teacher, section or room.
    | **capacity** | *(warning only)* more students than seats; the class is still placed |
 
 5. **Adjust.** Drag a placed class to another cell to move it, drag it back to
-   the left panel (or press ✕ / <kbd>Delete</kbd>) to unschedule it.
+   the left panel (or press ✕ / <kbd>Delete</kbd>) to unschedule it. While you
+   drag, free slots are hatched and an **already-booked slot turns red** so you
+   know before you let go. *Without a mouse:* press <kbd>Enter</kbd> on a
+   course to pick it up, <kbd>Enter</kbd> on a slot to place it,
+   <kbd>Esc</kbd> to cancel.
 6. **Click a scheduled class** to see instructor, department, headcount, room
    and the complete list of enrolled roll numbers.
 7. **Check all clashes** re-validates the entire week in one pass — do this
@@ -328,6 +336,30 @@ a text box.
 * `timetable.log` — rotating log, the first place to look if something misbehaves.
 
 Back up = copy `timetable.db`. Factory reset = delete the folder.
+
+### Your projects and exports live wherever *you* put them
+
+The folder above is only the app's own working data. Your **projects**
+(`.ttproj`) go wherever you choose — any folder on any drive, including USB
+sticks and network shares — and **every export (Excel, PDF, CSV, calendar) is
+written into that same folder**, so a project and its outputs stay together:
+
+```
+D:\Timetables\
+├── Spring 2026.ttproj      the project itself
+├── timetable.xlsx          Ctrl+E
+├── timetable-teacher.pdf   Publish -> PDF
+├── timetable.csv           Alt+V
+└── timetable.ics           Publish -> calendar
+```
+
+Exporting twice never overwrites: the second file becomes
+`timetable (2).xlsx`. If you have not saved a project yet, exports simply
+download to your browser's Downloads folder as before.
+
+> **Locked-down machines:** set `TTG_SANDBOX_HOME=1` (or
+> `TTG_SANDBOX_ROOT=D:\Shared\Timetables`) in the `.env` file to confine the
+> file browser to one folder — useful for shared lab or kiosk PCs.
 
 ---
 

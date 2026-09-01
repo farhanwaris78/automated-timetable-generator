@@ -362,8 +362,25 @@ def init_database(database_url: str, *, seed: bool = True) -> Engine:
     return engine
 
 
-def reset_database(engine: Engine) -> None:
-    """Drop everything and re-seed - the 'factory reset' action."""
+def reset_database(engine: Engine, *, seed: bool = True) -> None:
+    """Rebuild the schema from scratch - the 'factory reset' action.
+
+    ``seed=True``  → the bundled sample university (useful for a demo/tour).
+    ``seed=False`` → a **completely blank** database: no courses, no teachers,
+    no buildings, no rooms, no students, no timetable.  This is what *New
+    project* uses, because starting a real institute's timetable on top of
+    somebody else's demo data meant deleting 18 courses and 36 rooms by hand
+    before any work could begin.
+    """
     metadata.drop_all(engine, checkfirst=True)
     metadata.create_all(engine)
-    seed_if_empty(engine, force=True)
+    if seed:
+        seed_if_empty(engine, force=True)
+    else:
+        log.info("Created a blank database (no sample data)")
+
+
+def blank_database(engine: Engine) -> None:
+    """Empty every table but keep the schema - a brand-new, empty project."""
+    reset_database(engine, seed=False)
+

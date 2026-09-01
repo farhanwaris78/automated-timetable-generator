@@ -1,6 +1,131 @@
 # Changelog
 
-## 3.0.0 — standalone desktop app with projects
+## 2.0.2 — drag & drop that works, save anywhere, blank new projects
+
+This release fixes the three things that stopped 2.0.1 from being usable for
+real work, and hardens everything around them.
+
+### Drag & drop actually drops  🐛→✅
+
+Courses could not be dropped onto the timetable at all. Three separate
+spec-level defects had to line up for that to happen, and all three are fixed:
+
+* **Mismatched drag effects.** The course cards advertised
+  `effectAllowed = "copy"` while the grid cells answered
+  `dropEffect = "move"`. The HTML5 drag-and-drop model **cancels a drop whose
+  `dropEffect` is not permitted by `effectAllowed`**, so the browser silently
+  threw the drop away and the card sprang back. Both sides now negotiate
+  properly (`copyMove` + a matching effect per payload type).
+* **Missing `dragenter` handler.** Only `dragover` called `preventDefault()`.
+  Chromium decides whether an element is a drop target from the *first*
+  `dragenter`, so the cell was rejected before `dragover` ever ran. Both
+  events now accept the drag.
+* **Unreadable payload in the desktop window.** The code read the dragged item
+  back out of `dataTransfer.getData()`, which returns `""` while a drag is in
+  progress (protected mode) and also on `drop` inside the WebView2 / WKWebView
+  shells the desktop window uses. The payload is now held in memory, with
+  `dataTransfer` kept only as a fallback for drags from outside the app.
+
+On top of the fix:
+
+* **You can see where a class may land.** Free slots are lightly hatched during
+  a drag, the hovered cell is outlined, and a slot that is **already booked
+  turns red with a “no drop” cursor before you release the mouse** instead of
+  showing a “Slot taken” toast afterwards.
+* **Highlights never get stuck.** Nested elements used to fire `dragleave` and
+  strand the highlight; enter/leave are now depth-counted, and a cancelled
+  drag (<kbd>Esc</kbd>, dropping outside the window, losing focus) always
+  cleans up.
+* **A stray drop can no longer blank the app** — dropping a card on a
+  non-target used to let the browser navigate to the payload.
+* **Keyboard and touch support.** Press <kbd>Enter</kbd> or <kbd>Space</kbd> on
+  a course to pick it up, then <kbd>Enter</kbd> (or a tap) on a slot to place
+  it; <kbd>Esc</kbd> cancels. Cards and cells are focusable and labelled for
+  screen readers.
+* **A regression test that fails on the old build.** `tests/frontend/`
+  runs the real `app.js` against the real `index.html` in JSDOM, with a
+  `DataTransfer` stub that reproduces the browser's protected mode. 22 checks
+  including *“course was actually dropped into the timetable”*; the previous
+  build fails 4 of them.
+
+### Save your project **anywhere** — the whole computer is browsable  📁
+
+The file browser was hard-locked to your home folder: `C:\Users\<name>` was a
+wall you could not walk above, so a project could not be saved to `D:\`, a USB
+stick or a shared drive.
+
+* **Every drive and volume is reachable** — `C:\`, `D:\`, removable media,
+  network shares, `/`, `/Volumes/…`, `/media/…`, `/mnt/…`.
+* **A proper Save-as layout**: a sidebar of drives plus **Quick access**
+  shortcuts (Home, Desktop, Documents, Downloads and their OneDrive-redirected
+  equivalents), **clickable breadcrumbs**, and Up / Refresh / New folder.
+  You can walk all the way up to the drive root.
+* **Write permission is checked *before* you save.** A read-only folder is
+  labelled as such and the Save button is disabled with an explanation,
+  instead of the save failing after the fact.
+* **The dialog shows the exact file it will create** (`Will be saved as: …`)
+  and updates as you type.
+* **Better path handling**: `~`, environment variables and relative paths are
+  expanded; Windows-illegal characters and reserved device names (`CON`,
+  `LPT1`, …) are rejected with a clear message; missing parent folders are
+  created for you; creating a folder steps straight into it.
+* **Strict mode is still available** for shared or kiosk machines:
+  `TTG_SANDBOX_HOME=1`, or `TTG_SANDBOX_ROOT=/some/folder` for a custom root.
+
+### Exports land next to your project  📊
+
+Excel, PDF, CSV and iCalendar files used to go to the browser's Downloads
+folder, scattered away from the project they belong to.
+
+* **Every export is written into the folder your project was saved in.** Save
+  `D:\Timetables\Spring 2026.ttproj` and the workbook, PDFs, CSV and calendar
+  all appear in `D:\Timetables\`.
+* **Nothing is silently overwritten** — a second export becomes
+  `timetable (2).xlsx`, like Windows Explorer.
+* **Writes are atomic** (temp file + rename), so a crash or a full disk can
+  never leave a half-written spreadsheet behind.
+* Exports still **download normally** when no project has been saved yet, so
+  nothing breaks for people who never save.
+* **CSV is now generated server-side**, so it has the same columns as the
+  workbook (adding Building, Room type, Capacity, Kind and Semester), is
+  correctly quoted, and carries a UTF-8 BOM so Excel on Windows renders
+  accented names properly.
+
+### A new project is genuinely new  🗒️
+
+**New project** used to load the bundled sample university, so starting a real
+institute meant deleting 18 courses, 27 teachers, 36 rooms and 20 students by
+hand first.
+
+* <kbd>Ctrl+N</kbd> now creates a **completely blank workspace** — no courses,
+  teachers, buildings, rooms, students, enrolments or scheduled classes — and
+  clears the previous project's grid preferences too.
+* The sample university is a **tick-box** in the same dialog for anyone who
+  wants to explore the app, and `POST /api/database/reset {"blank": true}`
+  empties the database from the API.
+* The empty grid is no longer a dead end: it shows a **guided checklist**
+  (add a building → rooms → teachers → courses → generate) with working
+  buttons and shortcuts, plus a pointer to the Excel importer.
+* Having no rooms yet is treated as a normal starting state rather than an
+  error.
+
+### Under the hood
+
+* New `timetable/filesystem.py`: drive enumeration, quick places, breadcrumbs,
+  permission probing (a real write test, because `os.access` lies on Windows),
+  name validation, non-clobbering unique names and the opt-in sandbox — all
+  pure `pathlib`, no shell.
+* New API: `GET /api/fs/roots`, `POST /api/fs/check`, `POST /api/export/csv`;
+  `folder` accepted by every export route; `sample` by `/api/project/new`;
+  `blank` by `/api/database/reset`. `/api/project` now returns the available
+  drives, shortcuts and the current export folder.
+* `FileSystemError` is handled as a first-class JSON error.
+* Test suite grown from 110 to **121 Python tests** plus the 22 front-end
+  drag-and-drop checks.
+
+---
+
+## 2.0.1 — standalone desktop window, portable projects
 
 **Native desktop window (no browser tab)**
 * The app now opens in its **own desktop window** through pywebview: WebView2
@@ -54,6 +179,9 @@
   keeps the browser fallback path for headless machines.
 * Test suite grown from 94 to **110 tests** (project round-trips, corrupt /
   future-format files, backups, recents, fs sandbox, launcher flags).
+
+> Originally published as 3.0.0; renumbered to 2.0.1 so the desktop-window and
+> projects work sits in the 2.x line alongside 2.0.0.
 
 ---
 

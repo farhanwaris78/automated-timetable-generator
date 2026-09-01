@@ -634,3 +634,209 @@ kbd {
 }
 .mini-table th { font-weight: 600; color: var(--muted, #5b6479); }
 .mini-table .cell-lab { font-weight: 700; }
+
+/* ==========================================================================
+   Drag & drop feedback (2.0.2)
+   The old build gave no hint about *where* a card could land, and left stale
+   highlights behind when a drag was cancelled.  These rules make every state
+   unmistakable, including for keyboard and touch users.
+   ========================================================================== */
+.course-card { cursor: grab; }
+.course-card:focus-visible,
+.placed:focus-visible,
+td.slot:focus-visible { outline: 3px solid var(--brand); outline-offset: -3px; }
+
+/* the item currently being dragged */
+.is-dragging-source { opacity: .4; }
+
+/* every free slot lights up faintly while a drag is in progress, so the user
+   can see the drop zones instead of guessing */
+body.is-dragging td.slot:empty,
+body.is-carrying td.slot:empty {
+  background-image: linear-gradient(135deg, rgba(76, 92, 175, .09) 25%, transparent 25%,
+                    transparent 50%, rgba(76, 92, 175, .09) 50%, rgba(76, 92, 175, .09) 75%,
+                    transparent 75%);
+  background-size: 12px 12px;
+}
+
+td.slot.dragover {
+  background: #e7ecff;
+  box-shadow: inset 0 0 0 2px var(--brand);
+}
+
+/* the slot is already booked - say so before the drop instead of after */
+td.slot.drop-blocked {
+  background: #ffecec;
+  box-shadow: inset 0 0 0 2px var(--danger);
+  cursor: no-drop;
+}
+
+/* keyboard / touch "pick up then place" mode */
+.is-carried {
+  outline: 3px dashed var(--brand-dark);
+  outline-offset: 2px;
+  animation: ttg-carry-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ttg-carry-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.18); }
+}
+
+body.is-carrying td.slot { cursor: copy; }
+
+@media (prefers-reduced-motion: reduce) {
+  .is-carried { animation: none; }
+}
+
+/* ==========================================================================
+   File browser (2.0.2): drives + shortcuts sidebar, clickable breadcrumbs
+   ========================================================================== */
+.fs-body {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.fs-places {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+  overflow: auto;
+  max-height: 320px;
+  background: #fbfcff;
+}
+
+.fs-places-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  padding: 8px 8px 4px;
+  font-weight: 700;
+}
+
+.fs-place {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.fs-place:hover { background: #eef2ff; }
+.fs-place.active { background: #e0e7ff; font-weight: 600; }
+.fs-place .fs-ico { flex: none; color: var(--brand); display: inline-flex; }
+.fs-place-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* breadcrumb path bar */
+.fs-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12.5px;
+  min-height: 30px;
+}
+
+.fs-crumb {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--brand-dark);
+  padding: 2px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-crumb:hover { background: #eef2ff; text-decoration: underline; }
+.fs-sep { color: var(--ink-soft); font-size: 12px; }
+.fs-writable { flex: none; }
+
+.fs-save-target {
+  display: block;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f1f5ff;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-soft);
+  word-break: break-all;
+}
+
+.fs-row { cursor: pointer; }
+.fs-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+@media (max-width: 720px) {
+  .fs-body { grid-template-columns: 1fr; }
+  .fs-places { max-height: 130px; }
+}
+
+/* New-project options: blank (default) vs the bundled sample university. */
+.project-sample-row {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcff;
+}
+
+.project-sample-row .checkline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.project-sample-row .checkline input { margin-top: 3px; flex: none; }
+.project-sample-row .checkline strong { display: block; font-weight: 600; }
+.project-sample-row .checkline small {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* Guided empty state for a brand-new blank project. */
+.empty-steps {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px auto 10px;
+  padding-left: 22px;
+  text-align: left;
+}
+
+.empty-steps li { display: flex; align-items: center; gap: 10px; }
+.empty-steps kbd {
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #f7f9ff;
+  color: var(--ink-soft);
+}

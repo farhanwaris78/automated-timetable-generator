@@ -532,6 +532,100 @@ def test_excel_export_rejects_an_empty_timetable(client):
     assert client.post("/api/export/xlsx", json={}).status_code == 400
 
 
+# --------------------- exports written to a chosen folder --------------------- #
+def _one_class(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_export_is_written_into_the_requested_folder(client, tmp_path):
+    """Exports land beside the project instead of in the Downloads folder."""
+    _one_class(client)
+    folder = tmp_path / "Spring 2026"
+
+    response = client.post("/api/export/xlsx", json={"folder": str(folder)})
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["saved"] is True
+    written = Path(payload["path"])
+    assert written.parent == folder.resolve()      # folder was created for us
+    assert written.is_file() and written.stat().st_size > 0
+    assert not list(folder.glob("*.part"))         # atomic write left no debris
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_repeated_exports_never_overwrite(client, tmp_path):
+    _one_class(client)
+    first = client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()
+    second = client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()
+    third = client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()
+    assert Path(first["path"]).name == "timetable.xlsx"
+    assert Path(second["path"]).name == "timetable (2).xlsx"
+    assert Path(third["path"]).name == "timetable (3).xlsx"
+
+    # ...unless the caller explicitly asks for it.
+    again = client.post("/api/export/xlsx", json={"folder": str(tmp_path), "overwrite": True}).get_json()
+    assert Path(again["path"]).name == "timetable.xlsx"
+
+
+def test_csv_export_matches_the_workbook_columns(client, tmp_path):
+    _one_class(client)
+    payload = client.post("/api/export/csv", json={"folder": str(tmp_path)}).get_json()
+    text = Path(payload["path"]).read_text(encoding="utf-8")
+    assert text.startswith("\ufeff")             # Excel-friendly BOM
+    header = text.splitlines()[0]
+    for column in ("Day", "Room", "Building", "Room type", "Capacity",
+                   "Code", "Course", "Section", "Kind", "Teacher", "Semester", "Students"):
+        assert f'"{column}"' in header
+    row = text.splitlines()[1]
+    assert '"Monday"' in row and '"Theory"' in row
+    assert '"A-108"' in row or '"A-101"' in row   # a real room label, not an id
+
+
+def test_csv_export_streams_when_no_folder_is_given(client):
+    _one_class(client)
+    response = client.post("/api/export/csv", json={})
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert response.data.startswith("\ufeff".encode("utf-8"))
+
+
+def test_pdf_and_ics_also_honour_the_folder(client, tmp_path):
+    _one_class(client)
+    pdf = client.post("/api/publish/pdf", json={"folder": str(tmp_path), "scope": "all"}).get_json()
+    assert Path(pdf["path"]).suffix == ".pdf"
+    assert Path(pdf["path"]).read_bytes().startswith(b"%PDF")
+
+    ics = client.post("/api/publish/ics", json={"folder": str(tmp_path)}).get_json()
+    assert Path(ics["path"]).suffix == ".ics"
+    assert "BEGIN:VCALENDAR" in Path(ics["path"]).read_text(encoding="utf-8")
+
+
+def test_export_to_a_read_only_folder_explains_itself(client, tmp_path):
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        pytest.skip("root ignores permission bits")
+    _one_class(client)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+        response = client.post("/api/export/csv", json={"folder": str(locked)})
+        assert response.status_code == 400
+        assert "read-only" in response.get_json()["message"].lower()
+    finally:
+        locked.chmod(0o700)
+
+
+def test_export_rejects_a_dangerous_filename(client, tmp_path):
+    _one_class(client)
+    response = client.post("/api/export/csv", json={"folder": str(tmp_path), "filename": "../escape.csv"})
+    assert response.status_code == 400
+    assert not (tmp_path.parent / "escape.csv").exists()
+
+
 # ------------------------------- migrations ---------------------------------- #
 def test_migration_adds_columns_to_an_old_database(tmp_path):
     """Simulate a v2.0 database and prove it upgrades in place."""
