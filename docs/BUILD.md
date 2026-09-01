@@ -232,6 +232,31 @@ git push origin v2.0.0
 #   git push --delete origin v2.0.0 && git tag -f v2.0.0 && git push origin v2.0.0
 ```
 
+### 5b. Browser-only route (no git, no terminal)
+
+Everything below happens on github.com.
+
+1. **Add the workflow.** Open the repository → **Add file ▸ Create new file**.
+   Type `.github/workflows/build.yml` as the filename (typing the `/`
+   characters creates the folders). Paste the entire contents of
+   [`packaging/ci/build.yml`](../packaging/ci/build.yml) — open that file and
+   use the **Copy raw file** button. Commit directly to `master`.
+2. **Run it.** Go to the **Actions** tab → **Build desktop installers** →
+   **Run workflow ▸ master**. The run takes roughly 10–15 minutes: it runs the
+   tests on Linux, Windows and macOS, then packages each platform.
+3. **Collect the installers.** Open the finished run and download the
+   **Artifacts** at the bottom: `timetable-generator-windows`,
+   `timetable-generator-macos-arm64`, `timetable-generator-macos-intel`,
+   `timetable-generator-linux`.
+4. **Attach them to the release automatically.** Go to the **Releases** page →
+   the `v2.0.0` release → ⋯ → **Delete tag** is *not* needed; instead open
+   **Code ▸ Tags**, delete the `v2.0.0` tag, then recreate it: **Releases ▸
+   Draft a new release ▸ Choose a tag ▸ `v2.0.0` ▸ Create new tag on publish**.
+   Publishing the tag starts the workflow again and, when it finishes, every
+   installer is attached to that release automatically.
+   *(Alternatively just drag the downloaded files onto the release's
+   **Edit ▸ Attach binaries** area.)*
+
 ---
 
 ## 6. Version bumping
