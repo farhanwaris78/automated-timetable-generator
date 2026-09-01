@@ -9,6 +9,7 @@ click==8.1.8
 blinker==1.9.0
 SQLAlchemy==2.0.39
 waitress==3.0.2
+openpyxl==3.1.5
 python-dotenv==1.0.1
 
 # Optional: only needed when you point the app at Microsoft SQL Server.

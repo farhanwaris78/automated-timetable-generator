@@ -20,12 +20,21 @@
       <span class="brand-mark" aria-hidden="true">TT</span>
       <div>
         <h1>Automated Timetable Generator</h1>
-        <p class="brand-sub">Clash-free scheduling for universities &middot; v{{ app_version }}</p>
+        <p class="brand-sub">Clash-free scheduling &middot; v{{ app_version }}</p>
       </div>
     </div>
     <div class="header-status">
+      <div class="quick-add" role="group" aria-label="Quick add">
+        <button type="button" class="btn btn-ghost" data-action="addTeacher">+ Teacher</button>
+        <button type="button" class="btn btn-ghost" data-action="addRoom">+ Room</button>
+        <button type="button" class="btn btn-ghost" data-action="addCourse">+ Course</button>
+        <button type="button" class="btn btn-ghost" data-action="manage">Manage data</button>
+      </div>
       <span id="dbStatus" class="pill pill-muted" title="Database status">Connecting&hellip;</span>
-      <button type="button" id="helpButton" class="btn btn-ghost" aria-haspopup="dialog">Help</button>
+      <button type="button" class="btn btn-ghost" data-action="shortcuts" title="Keyboard shortcuts (F1)">
+        <span aria-hidden="true">⌨</span> Shortcuts
+      </button>
+      <button type="button" class="btn btn-ghost" data-action="help">Help</button>
     </div>
   </header>
 
@@ -45,7 +54,7 @@
         <span id="courseCount" class="chip-count">0</span>
       </div>
       <label class="visually-hidden" for="courseSearch">Search courses</label>
-      <input type="search" id="courseSearch" class="search" placeholder="Search course, section or teacher&hellip;"
+      <input type="search" id="courseSearch" class="search" placeholder="Search code, course or teacher (Ctrl+F)"
         autocomplete="off">
       <div class="sidebar-filters">
         <label><input type="checkbox" id="hidePlaced"> Hide already scheduled</label>
@@ -53,6 +62,7 @@
       <div id="coursesList" class="courses-list" aria-live="polite">
         <p class="empty">Loading courses&hellip;</p>
       </div>
+      <button type="button" class="btn btn-block" data-action="addCourse">+ Add course <kbd>Alt+C</kbd></button>
       <p class="sidebar-foot">Drag a course onto a free slot. Drag it back here to unschedule.</p>
     </aside>
 
@@ -62,17 +72,24 @@
     <!-- ------------------------------ workspace ---------------------------- -->
     <section class="workspace">
       <form id="setupForm" class="panel setup" autocomplete="off">
+        <div class="field shift-field">
+          <label>Shift</label>
+          <div class="segmented" role="group" aria-label="Shift">
+            <button type="button" class="seg" data-shift="morning" aria-pressed="true">Morning <kbd>Alt+1</kbd></button>
+            <button type="button" class="seg" data-shift="evening" aria-pressed="false">Evening <kbd>Alt+2</kbd></button>
+          </div>
+        </div>
         <div class="field">
           <label for="totalDays">Days / week</label>
           <input type="number" id="totalDays" min="1" max="7" value="5" required>
         </div>
         <div class="field">
-          <label for="startTime">Day starts</label>
+          <label for="startTime">Shift starts</label>
           <input type="time" id="startTime" value="08:30" required>
         </div>
         <div class="field">
-          <label for="endTime">Day ends</label>
-          <input type="time" id="endTime" value="17:15" required>
+          <label for="endTime">Shift ends</label>
+          <input type="time" id="endTime" value="13:00" required>
         </div>
         <div class="field">
           <label for="classDuration">Class (min)</label>
@@ -89,30 +106,48 @@
           </select>
         </div>
         <div class="field">
+          <label for="roomTypeFilter">Room type</label>
+          <select id="roomTypeFilter">
+            <option value="">All types</option>
+            <option value="Classroom">Classroom</option>
+            <option value="Lab">Lab</option>
+            <option value="Hall">Hall</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="roomLimit">Max rooms</label>
           <input type="number" id="roomLimit" min="1" max="200" value="12" required>
         </div>
         <div class="setup-actions">
-          <button type="submit" id="generateTimetable" class="btn btn-primary">Generate grid</button>
+          <button type="submit" class="btn btn-primary" data-action="generate">Generate grid <kbd>Ctrl+G</kbd></button>
         </div>
       </form>
 
       <div class="panel toolbar">
         <div class="toolbar-group">
-          <button type="button" id="saveToDatabase" class="btn btn-primary">Save to database</button>
-          <button type="button" id="loadFromDatabase" class="btn">Load saved</button>
-          <button type="button" id="validateAll" class="btn">Check all clashes</button>
+          <button type="button" class="btn icon-square" data-action="undo" id="undoBtn" disabled
+            title="Undo (Ctrl+Z)">↶</button>
+          <button type="button" class="btn icon-square" data-action="redo" id="redoBtn" disabled
+            title="Redo (Ctrl+Y)">↷</button>
         </div>
         <div class="toolbar-group">
-          <button type="button" id="exportPdf" class="btn">Export PDF</button>
-          <button type="button" id="exportCsv" class="btn">Export CSV</button>
-          <button type="button" id="printView" class="btn">Print</button>
+          <button type="button" class="btn btn-primary" data-action="save">Save to database</button>
+          <button type="button" class="btn" data-action="load">Load saved</button>
+          <button type="button" class="btn" data-action="validate">Check all clashes</button>
+          <button type="button" class="btn" data-action="autofill">Auto-fill remaining</button>
         </div>
         <div class="toolbar-group">
-          <button type="button" id="clearGrid" class="btn btn-warn">Clear grid</button>
-          <button type="button" id="resetTimetable" class="btn btn-danger">Reset saved timetable</button>
+          <button type="button" class="btn btn-accent" data-action="exportExcel">Export Excel</button>
+          <button type="button" class="btn" data-action="exportPdf">PDF</button>
+          <button type="button" class="btn" data-action="exportCsv">CSV</button>
+          <button type="button" class="btn" data-action="print">Print</button>
+        </div>
+        <div class="toolbar-group">
+          <button type="button" class="btn btn-warn" data-action="clearGrid">Clear grid</button>
+          <button type="button" class="btn btn-danger" data-action="resetSaved">Reset saved</button>
         </div>
         <div class="toolbar-meta">
+          <span id="shiftPill" class="pill pill-shift">Morning</span>
           <span id="placedCount" class="pill pill-muted">0 scheduled</span>
           <span id="conflictCount" class="pill pill-ok">No clashes</span>
         </div>
@@ -123,13 +158,15 @@
       <div id="timetableContainer" class="timetable-container">
         <div class="placeholder">
           <h3>No grid yet</h3>
-          <p>Choose your working hours above and press <strong>Generate grid</strong> to begin.</p>
+          <p>Choose your shift hours above and press <strong>Generate grid</strong> (<kbd>Ctrl</kbd>+<kbd>G</kbd>).</p>
         </div>
       </div>
     </section>
   </main>
 
-  <!-- ------------------------------- dialogs -------------------------------- -->
+  <!-- =============================== dialogs ================================ -->
+
+  <!-- class details / clash report -->
   <div id="courseDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="courseDialogTitle" hidden>
     <div class="dialog-card">
       <header class="dialog-head">
@@ -140,6 +177,137 @@
     </div>
   </div>
 
+  <!-- add / edit teacher -->
+  <div id="teacherDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="teacherDialogTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="teacherDialogTitle">Add teacher</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <form id="teacherForm" class="dialog-body form-grid" autocomplete="off">
+        <input type="hidden" id="teacherId">
+        <label for="teacherName">Full name *</label>
+        <input type="text" id="teacherName" required maxlength="255" placeholder="Dr. Ayesha Khan">
+        <label for="teacherEmail">Email</label>
+        <input type="email" id="teacherEmail" maxlength="150" placeholder="a.khan@university.edu">
+        <label for="teacherDept">Department</label>
+        <input type="text" id="teacherDept" maxlength="100" placeholder="Computer Science">
+        <label for="teacherShift">Available in</label>
+        <select id="teacherShift">
+          <option value="both">Both shifts</option>
+          <option value="morning">Morning only</option>
+          <option value="evening">Evening only</option>
+        </select>
+        <div class="form-actions">
+          <button type="button" class="btn" data-close-dialog>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save teacher</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- add / edit room -->
+  <div id="roomDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="roomDialogTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="roomDialogTitle">Add classroom</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <form id="roomForm" class="dialog-body form-grid" autocomplete="off">
+        <input type="hidden" id="roomId">
+        <label for="roomNumber">Room number *</label>
+        <input type="text" id="roomNumber" required maxlength="20" placeholder="301">
+        <label for="roomBuilding">Building *</label>
+        <input list="buildingOptions" id="roomBuilding" required maxlength="255" placeholder="A (or a new name)">
+        <datalist id="buildingOptions"></datalist>
+        <label for="roomCapacity">Capacity</label>
+        <input type="number" id="roomCapacity" min="1" max="2000" value="60">
+        <label for="roomType">Type</label>
+        <select id="roomType">
+          <option>Classroom</option>
+          <option>Lab</option>
+          <option>Hall</option>
+        </select>
+        <div class="form-actions">
+          <button type="button" class="btn" data-close-dialog>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save room</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- add / edit course -->
+  <div id="courseFormDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="courseFormTitle" hidden>
+    <div class="dialog-card">
+      <header class="dialog-head">
+        <h3 id="courseFormTitle">Add course</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <form id="courseForm" class="dialog-body form-grid" autocomplete="off">
+        <input type="hidden" id="courseIdField">
+        <label for="courseCode">Course code *</label>
+        <input type="text" id="courseCode" required maxlength="24" placeholder="CS3009" style="text-transform:uppercase">
+        <label for="courseName">Course title *</label>
+        <input type="text" id="courseName" required maxlength="255" placeholder="Artificial Intelligence">
+        <label for="courseDept">Department</label>
+        <input type="text" id="courseDept" maxlength="100" placeholder="Computer Science">
+        <label for="courseCredits">Credit hours</label>
+        <input type="number" id="courseCredits" min="0" max="12" value="3">
+        <label for="courseColor">Colour</label>
+        <input type="color" id="courseColor" value="#a9d2e1">
+        <label for="courseSections">Sections</label>
+        <input type="text" id="courseSections" maxlength="120" placeholder="A, B, C">
+        <label for="courseTeacher">Teacher for these sections</label>
+        <select id="courseTeacher">
+          <option value="">Unassigned</option>
+        </select>
+        <div class="form-actions">
+          <button type="button" class="btn" data-close-dialog>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save course</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- manage data -->
+  <div id="manageDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="manageTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="manageTitle">Manage data</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab" data-tab="teachers" aria-selected="true">Teachers</button>
+        <button type="button" class="tab" data-tab="rooms" aria-selected="false">Classrooms</button>
+        <button type="button" class="tab" data-tab="courses" aria-selected="false">Courses &amp; codes</button>
+      </div>
+      <div class="dialog-body">
+        <div class="manage-toolbar">
+          <input type="search" id="manageSearch" class="search light" placeholder="Filter&hellip;" autocomplete="off">
+          <span class="grow"></span>
+          <button type="button" class="btn btn-primary" id="manageAddBtn">Add</button>
+        </div>
+        <div id="managePanel" class="manage-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- keyboard shortcuts -->
+  <div id="shortcutsDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="shortcutsTitle">Keyboard shortcuts</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <div id="shortcutsBody" class="shortcuts-grid"></div>
+        <p class="muted">Shortcuts are disabled while you are typing in a text box. Press <kbd>F1</kbd> any time to
+          reopen this list.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- help -->
   <div id="helpDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="helpDialogTitle" hidden>
     <div class="dialog-card">
       <header class="dialog-head">
@@ -148,17 +316,18 @@
       </header>
       <div class="dialog-body">
         <ol class="help-list">
-          <li><strong>Generate grid</strong> - set working hours, class length and break, then build the week.</li>
-          <li><strong>Drag &amp; drop</strong> a course from the left panel into a room/time cell.</li>
-          <li>The server checks <strong>room, instructor, student and capacity clashes</strong> on every drop and
-            explains exactly who clashes.</li>
-          <li>Click a scheduled class to see the instructor, department and full student roster.</li>
-          <li><strong>Save to database</strong> stores the week; <strong>Load saved</strong> brings it back on the next
-            launch.</li>
-          <li>Export the finished week as <strong>PDF</strong> or <strong>CSV</strong>.</li>
+          <li><strong>Add your data</strong> - teachers (<kbd>Alt+T</kbd>), classrooms (<kbd>Alt+R</kbd>) and courses
+            with their codes (<kbd>Alt+C</kbd>). Everything is editable under <em>Manage data</em> (<kbd>Alt+M</kbd>).
+          </li>
+          <li><strong>Pick a shift</strong> - Morning (<kbd>Alt+1</kbd>) or Evening (<kbd>Alt+2</kbd>). Each shift keeps
+            its own hours; both are saved in the same timetable.</li>
+          <li><strong>Generate the grid</strong> for up to 7 days a week.</li>
+          <li><strong>Drag &amp; drop</strong> courses into room/time cells. Every drop is checked for room, teacher,
+            student and capacity clashes.</li>
+          <li><strong>Undo/redo</strong> anything with <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.</li>
+          <li><strong>Save</strong> (<kbd>Ctrl+S</kbd>) and <strong>export</strong> to Excel (<kbd>Ctrl+E</kbd>) - one
+            worksheet per day, plus Summary and By-Teacher sheets.</li>
         </ol>
-        <p class="muted">Keyboard: <kbd>Esc</kbd> closes dialogs, <kbd>Delete</kbd> removes the selected class,
-          <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.</p>
       </div>
     </div>
   </div>

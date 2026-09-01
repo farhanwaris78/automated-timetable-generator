@@ -29,8 +29,11 @@ PKG = PROJECT_ROOT / "timetable"
 IS_WINDOWS = sys.platform.startswith("win")
 
 build_exe_options = {
-    "packages": ["timetable", "flask", "jinja2", "sqlalchemy", "waitress", "sqlite3", "dotenv"],
-    "includes": ["sqlalchemy.dialects.sqlite"],
+    "packages": [
+        "timetable", "flask", "jinja2", "sqlalchemy", "waitress", "sqlite3", "dotenv",
+        "openpyxl", "et_xmlfile",
+    ],
+    "includes": ["sqlalchemy.dialects.sqlite", "openpyxl.cell._writer"],
     "excludes": ["tkinter", "unittest", "test", "pydoc", "numpy", "pandas", "matplotlib", "PIL"],
     "include_files": [
         (str(PKG / "templates"), "templates"),

@@ -73,6 +73,7 @@ class Assignment:
     room_id: int
     course_id: int
     section: str
+    shift: str = "morning"
     entry_id: int | None = None
 
     @property
@@ -108,6 +109,10 @@ class Assignment:
         if to_minutes(end) <= to_minutes(start):
             raise ValidationError("end_time must be after start_time")
 
+        shift = str(raw.get("shift") or "morning").strip().lower()
+        if shift not in ("morning", "evening"):
+            shift = "morning"
+
         entry_id = raw.get("entry_id")
         return cls(
             day=day,
@@ -116,6 +121,7 @@ class Assignment:
             room_id=room_id,
             course_id=course_id,
             section=section,
+            shift=shift,
             entry_id=int(entry_id) if entry_id not in (None, "") else None,
         )
 
@@ -127,6 +133,7 @@ class Assignment:
             "room_id": self.room_id,
             "course_id": self.course_id,
             "section": self.section,
+            "shift": self.shift,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
@@ -180,9 +187,11 @@ class TimetableService:
         stmt = (
             select(
                 courses.c.id,
+                courses.c.code,
                 courses.c.name,
                 courses.c.color,
                 courses.c.department,
+                courses.c.credit_hours,
                 course_sections.c.section,
                 teacher.c.instructor,
                 teacher.c.instructor_id,
@@ -205,9 +214,11 @@ class TimetableService:
             return [
                 {
                     "id": r.id,
+                    "code": r.code or "",
                     "name": r.name,
                     "color": r.color or "#4c5caf",
                     "department": r.department,
+                    "credit_hours": r.credit_hours,
                     "section": r.section,
                     "instructor": r.instructor or "Unassigned",
                     "instructor_id": r.instructor_id,
@@ -222,9 +233,11 @@ class TimetableService:
         stmt = (
             select(
                 courses.c.id,
+                courses.c.code,
                 courses.c.name,
                 courses.c.color,
                 courses.c.department,
+                courses.c.credit_hours,
                 course_sections.c.section,
             )
             .select_from(courses.join(course_sections, courses.c.id == course_sections.c.course_id))
@@ -267,6 +280,8 @@ class TimetableService:
 
         return {
             "id": row.id,
+            "code": row.code or "",
+            "credit_hours": row.credit_hours,
             "name": f"{row.name} - {row.section}",
             "course_name": row.name,
             "section": row.section,
@@ -294,6 +309,7 @@ class TimetableService:
                 rooms.c.id,
                 rooms.c.room_number,
                 rooms.c.capacity,
+                rooms.c.room_type,
                 buildings.c.name.label("building_name"),
                 buildings.c.id.label("building_id"),
             )
@@ -308,6 +324,7 @@ class TimetableService:
                     "building_id": r.building_id,
                     "building_name": r.building_name,
                     "capacity": r.capacity,
+                    "room_type": r.room_type,
                     "label": f"{r.building_name}-{r.room_number}",
                 }
                 for r in conn.execute(stmt)
@@ -553,13 +570,140 @@ class TimetableService:
                     "room_id": item.room_id,
                     "course_id": item.course_id,
                     "section": item.section,
+                    "shift": item.shift,
                     "course_name": names.get(item.course_id, str(item.course_id)),
                 }
             )
         return reports
 
+    # ------------------------------ auto-fill ------------------------------ #
+    def autofill(
+        self,
+        existing: list[Assignment],
+        *,
+        days: int,
+        slots: list[dict[str, str]],
+        room_ids: list[int],
+        shift: str = "morning",
+        limit: int | None = None,
+    ) -> list[Assignment]:
+        """Greedily place every not-yet-scheduled section into a free slot.
+
+        Everything is resolved in memory first (rosters, teachers, capacities),
+        so the search is pure computation - a full week fills in milliseconds.
+        Sections with the largest enrolment are placed first, because they are
+        the hardest to fit.
+        """
+        if not slots or not room_ids or days < 1:
+            raise ValidationError("Generate a grid before using auto-fill.")
+
+        with self.engine.connect() as conn:
+            sections = conn.execute(
+                select(course_sections.c.course_id, course_sections.c.section)
+            ).all()
+            teacher_of = {
+                (r.course_id, r.section): r.instructor_id
+                for r in conn.execute(
+                    select(courses_taught_by.c.course_id, courses_taught_by.c.section, courses_taught_by.c.instructor_id)
+                )
+            }
+            roster_of: dict[tuple[int, str], set[str]] = {}
+            for row in conn.execute(select(enrollments.c.course_id, enrollments.c.section, enrollments.c.roll_number)):
+                roster_of.setdefault((row.course_id, row.section), set()).add(row.roll_number)
+            capacity_of = {r.id: r.capacity for r in conn.execute(select(rooms.c.id, rooms.c.capacity))}
+
+        placed = [
+            {
+                "day": a.day,
+                "start": a.start_min,
+                "end": a.end_min,
+                "room_id": a.room_id,
+                "key": (a.course_id, a.section),
+            }
+            for a in existing
+        ]
+        already = {p["key"] for p in placed}
+
+        todo = [
+            (course_id, section)
+            for course_id, section in sections
+            if (course_id, section) not in already
+        ]
+        todo.sort(key=lambda key: -len(roster_of.get(key, ())))
+        if limit:
+            todo = todo[:limit]
+
+        normalised_slots = []
+        for slot in slots:
+            start = normalise_time(str(slot.get("start") or slot.get("start_time")))
+            end = normalise_time(str(slot.get("end") or slot.get("end_time")))
+            if to_minutes(end) <= to_minutes(start):
+                raise ValidationError("Slot end must be after its start.")
+            normalised_slots.append((start, end))
+
+        created: list[Assignment] = []
+        for course_id, section in todo:
+            roster = roster_of.get((course_id, section), set())
+            teacher = teacher_of.get((course_id, section))
+            done = False
+
+            for day in range(1, days + 1):
+                if done:
+                    break
+                for start, end in normalised_slots:
+                    if done:
+                        break
+                    start_min, end_min = to_minutes(start), to_minutes(end)
+                    overlapping = [
+                        p for p in placed
+                        if p["day"] == day and overlaps(start_min, end_min, p["start"], p["end"])
+                    ]
+                    busy_rooms = {p["room_id"] for p in overlapping}
+                    clashes_person = any(
+                        (teacher is not None and teacher_of.get(p["key"]) == teacher)
+                        or (roster and roster & roster_of.get(p["key"], set()))
+                        for p in overlapping
+                    )
+                    if clashes_person:
+                        continue
+                    for room_id in room_ids:
+                        if room_id in busy_rooms:
+                            continue
+                        if roster and len(roster) > capacity_of.get(room_id, 0):
+                            continue
+                        assignment = Assignment(
+                            day=day, start_time=start, end_time=end, room_id=room_id,
+                            course_id=course_id, section=section, shift=shift,
+                        )
+                        created.append(assignment)
+                        placed.append(
+                            {"day": day, "start": start_min, "end": end_min,
+                             "room_id": room_id, "key": (course_id, section)}
+                        )
+                        done = True
+                        break
+        return created
+
     # ------------------------------ persistence ---------------------------- #
     def load_timetable(self) -> list[dict[str, Any]]:
+        enrolled = (
+            select(
+                enrollments.c.course_id.label("cid"),
+                enrollments.c.section.label("sec"),
+                func.count().label("num_students"),
+            )
+            .group_by(enrollments.c.course_id, enrollments.c.section)
+            .subquery()
+        )
+        teacher = (
+            select(
+                courses_taught_by.c.course_id.label("cid"),
+                courses_taught_by.c.section.label("sec"),
+                instructors.c.name.label("instructor"),
+            )
+            .select_from(courses_taught_by.join(instructors, courses_taught_by.c.instructor_id == instructors.c.id))
+            .subquery()
+        )
         stmt = (
             select(
                 timetable_entries.c.id,
@@ -569,15 +713,31 @@ class TimetableService:
                 timetable_entries.c.room_id,
                 timetable_entries.c.course_id,
                 timetable_entries.c.section,
+                timetable_entries.c.shift,
                 courses.c.name.label("course_name"),
+                courses.c.code,
                 courses.c.color,
                 rooms.c.room_number,
+                rooms.c.capacity,
+                rooms.c.room_type,
                 buildings.c.name.label("building_name"),
+                teacher.c.instructor,
+                func.coalesce(enrolled.c.num_students, 0).label("num_students"),
             )
             .select_from(
                 timetable_entries.join(courses, timetable_entries.c.course_id == courses.c.id)
                 .join(rooms, timetable_entries.c.room_id == rooms.c.id)
                 .join(buildings, rooms.c.building_id == buildings.c.id)
+                .outerjoin(
+                    teacher,
+                    (teacher.c.cid == timetable_entries.c.course_id)
+                    & (teacher.c.sec == timetable_entries.c.section),
+                )
+                .outerjoin(
+                    enrolled,
+                    (enrolled.c.cid == timetable_entries.c.course_id)
+                    & (enrolled.c.sec == timetable_entries.c.section),
+                )
             )
             .order_by(timetable_entries.c.day, timetable_entries.c.start_time, rooms.c.room_number)
         )
@@ -585,11 +745,90 @@ class TimetableService:
             return [
                 {
                     **dict(r),
+                    "instructor": r.instructor or "Unassigned",
                     "day_name": WEEKDAYS[int(r.day) - 1],
                     "room_label": f"{r.building_name}-{r.room_number}",
                 }
                 for r in conn.execute(stmt).mappings()
             ]
+
+    def describe_assignments(self, assignments: list[Assignment]) -> list[dict[str, Any]]:
+        """Turn raw assignments into export-ready rows (names, teacher, room…).
+
+        Used by the Excel export so the user can export what is currently on
+        screen without having to save it first.
+        """
+        if not assignments:
+            return []
+        with self.engine.connect() as conn:
+            course_rows = {
+                r.id: r
+                for r in conn.execute(
+                    select(courses.c.id, courses.c.code, courses.c.name, courses.c.color, courses.c.department)
+                )
+            }
+            room_rows = {
+                r.id: r
+                for r in conn.execute(
+                    select(
+                        rooms.c.id,
+                        rooms.c.room_number,
+                        rooms.c.capacity,
+                        buildings.c.name.label("building_name"),
+                    ).select_from(rooms.join(buildings, rooms.c.building_id == buildings.c.id))
+                )
+            }
+            teachers = {
+                (r.course_id, r.section): r.name
+                for r in conn.execute(
+                    select(
+                        courses_taught_by.c.course_id,
+                        courses_taught_by.c.section,
+                        instructors.c.name,
+                    ).select_from(
+                        courses_taught_by.join(instructors, courses_taught_by.c.instructor_id == instructors.c.id)
+                    )
+                )
+            }
+            headcount = {
+                (r.course_id, r.section): r.total
+                for r in conn.execute(
+                    select(
+                        enrollments.c.course_id,
+                        enrollments.c.section,
+                        func.count().label("total"),
+                    ).group_by(enrollments.c.course_id, enrollments.c.section)
+                )
+            }
+
+        rows: list[dict[str, Any]] = []
+        for item in assignments:
+            course = course_rows.get(item.course_id)
+            room = room_rows.get(item.room_id)
+            rows.append(
+                {
+                    "id": item.entry_id,
+                    "day": item.day,
+                    "day_name": WEEKDAYS[item.day - 1],
+                    "start_time": item.start_time,
+                    "end_time": item.end_time,
+                    "shift": item.shift,
+                    "room_id": item.room_id,
+                    "room_number": room.room_number if room else item.room_id,
+                    "capacity": room.capacity if room else 0,
+                    "building_name": room.building_name if room else "",
+                    "room_label": f"{room.building_name}-{room.room_number}" if room else str(item.room_id),
+                    "course_id": item.course_id,
+                    "code": course.code if course else "",
+                    "course_name": course.name if course else str(item.course_id),
+                    "color": course.color if course else "#dddddd",
+                    "department": course.department if course else "",
+                    "section": item.section,
+                    "instructor": teachers.get((item.course_id, item.section), "Unassigned"),
+                    "num_students": headcount.get((item.course_id, item.section), 0),
+                }
+            )
+        return rows
 
     def save_timetable(self, assignments: list[Assignment], *, replace: bool = True) -> dict[str, Any]:
         """Persist the grid atomically after a full validation pass."""

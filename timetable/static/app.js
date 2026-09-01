@@ -6,27 +6,80 @@
 (function () {
   "use strict";
 
-  /* ----------------------------- state --------------------------------- */
   var WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  var HISTORY_LIMIT = 100;
+
+  /* ------------------------- keyboard shortcut map ----------------------- */
+  /* One registry drives the handler, the button tooltips AND the help dialog,
+     so what the user reads is always what the app actually does.            */
+  var SHORTCUTS = [
+    { group: "Add data", combo: "Alt+T", action: "addTeacher", label: "Add teacher" },
+    { group: "Add data", combo: "Alt+R", action: "addRoom", label: "Add classroom" },
+    { group: "Add data", combo: "Alt+C", action: "addCourse", label: "Add course (with code)" },
+    { group: "Add data", combo: "Alt+B", action: "addBuilding", label: "Add building" },
+    { group: "Add data", combo: "Alt+S", action: "addSection", label: "Add section to a course" },
+    { group: "Add data", combo: "Alt+M", action: "manage", label: "Manage teachers / rooms / courses" },
+
+    { group: "Edit", combo: "Ctrl+Z", action: "undo", label: "Undo" },
+    { group: "Edit", combo: "Ctrl+Y", action: "redo", label: "Redo" },
+    { group: "Edit", combo: "Ctrl+Shift+Z", action: "redo", label: "Redo (alternative)" },
+    { group: "Edit", combo: "Delete", action: "removeSelected", label: "Remove the selected class" },
+    { group: "Edit", combo: "Ctrl+Backspace", action: "clearGrid", label: "Clear the whole grid" },
+
+    { group: "Timetable", combo: "Ctrl+G", action: "generate", label: "Generate the grid" },
+    { group: "Timetable", combo: "Ctrl+S", action: "save", label: "Save to database" },
+    { group: "Timetable", combo: "Ctrl+O", action: "load", label: "Load the saved timetable" },
+    { group: "Timetable", combo: "Ctrl+K", action: "validate", label: "Check every clash" },
+    { group: "Timetable", combo: "Ctrl+Shift+A", action: "autofill", label: "Auto-fill the remaining sections" },
+
+    { group: "Export", combo: "Ctrl+E", action: "exportExcel", label: "Export to Excel (one sheet per day)" },
+    { group: "Export", combo: "Alt+P", action: "exportPdf", label: "Export to PDF" },
+    { group: "Export", combo: "Alt+V", action: "exportCsv", label: "Export to CSV" },
+    { group: "Export", combo: "Ctrl+P", action: "print", label: "Print" },
+
+    { group: "View", combo: "Alt+1", action: "shiftMorning", label: "Switch to the morning shift" },
+    { group: "View", combo: "Alt+2", action: "shiftEvening", label: "Switch to the evening shift" },
+    { group: "View", combo: "1 … 7", action: null, label: "Jump to Monday … Sunday" },
+    { group: "View", combo: "Ctrl+F", action: "focusSearch", label: "Search the course list" },
+    { group: "View", combo: "Alt+H", action: "toggleSidebar", label: "Show / hide the course panel" },
+    { group: "View", combo: "F1", action: "shortcuts", label: "This shortcut list" },
+    { group: "View", combo: "Esc", action: null, label: "Close a dialog" }
+  ];
+
+  var DEFAULT_SHIFTS = {
+    morning: { start: "08:30", end: "13:00" },
+    evening: { start: "13:30", end: "19:00" }
+  };
 
   var state = {
-    courses: [],          // one entry per course-section
-    rooms: [],            // all rooms from the DB
-    gridRooms: [],        // rooms currently rendered
-    slots: [],            // [{start:"08:30", end:"09:50"}]
+    courses: [],
+    rooms: [],
+    buildings: [],
+    instructors: [],
+    shift: "morning",
+    shiftHours: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)),
     days: 5,
+    duration: 80,
+    breakTime: 10,
+    roomLimit: 12,
+    building: "",
+    roomType: "",
+    slots: { morning: [], evening: [] },
+    gridRooms: [],
     activeDay: 1,
-    placements: [],       // {uid, day, start, end, room_id, course_id, section}
-    conflicts: {},        // uid -> [conflict]
-    dirty: false,
+    placements: [],
+    conflicts: {},
     selectedUid: null,
-    config: null
+    dirty: false,
+    history: [],
+    future: [],
+    manageTab: "teachers"
   };
 
   var uidSeq = 1;
   function nextUid() { return "p" + (uidSeq++); }
 
-  /* ----------------------------- helpers -------------------------------- */
+  /* ------------------------------- helpers ------------------------------- */
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
 
@@ -69,7 +122,9 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
-  /* ------------------------------ network -------------------------------- */
+  function titleCase(value) { return String(value || "").charAt(0).toUpperCase() + String(value || "").slice(1); }
+
+  /* ------------------------------- network -------------------------------- */
   function api(path, options) {
     options = options || {};
     var init = { method: options.method || "GET", headers: { "Accept": "application/json" } };
@@ -77,7 +132,21 @@
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(options.body);
     }
+    if (options.raw) init.headers.Accept = "*/*";
+
     return fetch(path, init).then(function (response) {
+      if (options.raw) {
+        if (!response.ok) {
+          return response.text().then(function (raw) {
+            var data = {};
+            try { data = JSON.parse(raw); } catch (err) { data = { message: raw }; }
+            var error = new Error(data.message || ("HTTP " + response.status));
+            error.status = response.status;
+            throw error;
+          });
+        }
+        return response.blob();
+      }
       return response.text().then(function (raw) {
         var data = null;
         if (raw) { try { data = JSON.parse(raw); } catch (err) { data = { message: raw }; } }
@@ -92,7 +161,18 @@
     });
   }
 
-  /* ------------------------------- toasts -------------------------------- */
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var link = el("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+
+  /* -------------------------------- toasts -------------------------------- */
   function toast(title, message, kind, timeout) {
     var host = $("#toasts");
     var node = el("div", "toast " + (kind || "info"));
@@ -106,11 +186,57 @@
     }, timeout || (kind === "error" ? 8000 : 4000));
   }
 
-  /* ------------------------------ dialogs -------------------------------- */
-  function openDialog(id) { var d = $(id); if (d) { d.hidden = false; } }
-  function closeDialogs() { $$(".dialog").forEach(function (d) { d.hidden = true; }); }
+  /* ------------------------------- dialogs -------------------------------- */
+  function openDialog(id) {
+    var dialog = $(id);
+    if (!dialog) return;
+    dialog.hidden = false;
+    var focusable = dialog.querySelector("input:not([type=hidden]), select, textarea, button");
+    if (focusable) window.setTimeout(function () { focusable.focus(); }, 30);
+  }
 
-  /* ------------------------------ courses -------------------------------- */
+  function closeDialogs() { $$(".dialog").forEach(function (dialog) { dialog.hidden = true; }); }
+
+  /* ------------------------------ undo / redo ----------------------------- */
+  function snapshot() {
+    state.history.push(JSON.stringify(state.placements));
+    if (state.history.length > HISTORY_LIMIT) state.history.shift();
+    state.future.length = 0;
+    updateHistoryButtons();
+  }
+
+  function restore(json) {
+    state.placements = JSON.parse(json);
+    state.conflicts = {};
+    state.selectedUid = null;
+    renderAll();
+    revalidateAll({ silent: true });
+  }
+
+  function undo() {
+    if (!state.history.length) { toast("Nothing to undo", "", "info", 2000); return; }
+    state.future.push(JSON.stringify(state.placements));
+    restore(state.history.pop());
+    state.dirty = true;
+    updateHistoryButtons();
+    toast("Undone", "", "info", 1600);
+  }
+
+  function redo() {
+    if (!state.future.length) { toast("Nothing to redo", "", "info", 2000); return; }
+    state.history.push(JSON.stringify(state.placements));
+    restore(state.future.pop());
+    state.dirty = true;
+    updateHistoryButtons();
+    toast("Redone", "", "info", 1600);
+  }
+
+  function updateHistoryButtons() {
+    $("#undoBtn").disabled = !state.history.length;
+    $("#redoBtn").disabled = !state.future.length;
+  }
+
+  /* ------------------------------- catalogue ------------------------------ */
   function courseKey(courseId, section) { return courseId + ":" + section; }
 
   function findCourse(courseId, section) {
@@ -138,7 +264,8 @@
     state.courses.forEach(function (course) {
       var isPlaced = !!placed[courseKey(course.id, course.section)];
       if (hidePlaced && isPlaced) return;
-      var haystack = (course.name + " " + course.section + " " + course.instructor + " " + course.department).toLowerCase();
+      var haystack = [course.code, course.name, course.section, course.instructor, course.department]
+        .join(" ").toLowerCase();
       if (query && haystack.indexOf(query) === -1) return;
 
       var card = el("div", "course-card" + (isPlaced ? " is-placed" : ""));
@@ -147,10 +274,14 @@
       card.style.color = readableInk(course.color);
       card.dataset.courseId = course.id;
       card.dataset.section = course.section;
-      card.title = course.name + " - " + course.section + "\nInstructor: " + course.instructor +
-        "\nStudents: " + course.num_students;
+      card.title = (course.code ? course.code + " · " : "") + course.name + " - " + course.section +
+        "\nTeacher: " + course.instructor + "\nStudents: " + course.num_students;
 
-      card.appendChild(el("div", "cc-title", course.name + " - " + course.section));
+      var title = el("div", "cc-title");
+      if (course.code) title.appendChild(el("span", "cc-code", course.code));
+      title.appendChild(document.createTextNode(course.name + " - " + course.section));
+      card.appendChild(title);
+
       var meta = el("div", "cc-meta");
       meta.appendChild(el("span", null, course.instructor));
       meta.appendChild(el("span", null, course.num_students + " std"));
@@ -167,11 +298,15 @@
       shown++;
     });
 
-    if (!shown) host.appendChild(el("p", "empty", state.courses.length ? "No course matches your search." : "No courses found."));
+    if (!shown) {
+      host.appendChild(el("p", "empty", state.courses.length
+        ? "No course matches your search."
+        : "No courses yet - press Alt+C to add one."));
+    }
     $("#courseCount").textContent = String(shown);
   }
 
-  /* --------------------------- slot generation ---------------------------- */
+  /* ---------------------------- slot generation --------------------------- */
   function buildSlots(startTime, endTime, duration, breakTime) {
     var slots = [];
     var cursor = toMinutes(startTime);
@@ -179,113 +314,141 @@
     var guard = 0;
 
     if (!(duration > 0)) throw new Error("Class duration must be greater than zero.");
-    if (end <= cursor) throw new Error("The end time must be later than the start time.");
+    if (end <= cursor) throw new Error("The shift's end time must be later than its start time.");
 
     while (cursor + duration <= end && guard++ < 100) {
       slots.push({ start: fromMinutes(cursor), end: fromMinutes(cursor + duration) });
       cursor += duration + Math.max(0, breakTime);
     }
-    if (!slots.length) throw new Error("The working day is shorter than one class. Reduce the class duration.");
+    if (!slots.length) throw new Error("This shift is shorter than one class. Reduce the class duration.");
     return slots;
   }
 
   function readSetup() {
-    var days = Math.min(7, Math.max(1, parseInt($("#totalDays").value, 10) || 5));
+    state.days = Math.min(7, Math.max(1, parseInt($("#totalDays").value, 10) || 5));
     var duration = parseInt($("#classDuration").value, 10);
     var breakTime = parseInt($("#breakTime").value, 10);
-    var roomLimit = Math.max(1, parseInt($("#roomLimit").value, 10) || 12);
-    var building = $("#buildingFilter").value;
-    return {
-      days: days,
-      start: $("#startTime").value || "08:30",
-      end: $("#endTime").value || "17:15",
-      duration: isNaN(duration) ? 60 : duration,
-      breakTime: isNaN(breakTime) ? 0 : breakTime,
-      roomLimit: roomLimit,
-      building: building
+    state.duration = isNaN(duration) ? 60 : duration;
+    state.breakTime = isNaN(breakTime) ? 0 : breakTime;
+    state.roomLimit = Math.max(1, parseInt($("#roomLimit").value, 10) || 12);
+    state.building = $("#buildingFilter").value;
+    state.roomType = $("#roomTypeFilter").value;
+    state.shiftHours[state.shift] = {
+      start: $("#startTime").value || DEFAULT_SHIFTS[state.shift].start,
+      end: $("#endTime").value || DEFAULT_SHIFTS[state.shift].end
     };
   }
 
-  function applySetup(config) {
-    if (!config) return;
-    if (config.days) $("#totalDays").value = config.days;
-    if (config.start) $("#startTime").value = config.start;
-    if (config.end) $("#endTime").value = config.end;
-    if (config.duration) $("#classDuration").value = config.duration;
-    if (config.breakTime !== undefined) $("#breakTime").value = config.breakTime;
-    if (config.roomLimit) $("#roomLimit").value = config.roomLimit;
-    if (config.building !== undefined) $("#buildingFilter").value = config.building;
+  function writeSetup() {
+    $("#totalDays").value = state.days;
+    $("#classDuration").value = state.duration;
+    $("#breakTime").value = state.breakTime;
+    $("#roomLimit").value = state.roomLimit;
+    $("#buildingFilter").value = state.building || "";
+    $("#roomTypeFilter").value = state.roomType || "";
+    $("#startTime").value = state.shiftHours[state.shift].start;
+    $("#endTime").value = state.shiftHours[state.shift].end;
+    $$(".seg").forEach(function (button) {
+      button.setAttribute("aria-pressed", button.dataset.shift === state.shift ? "true" : "false");
+    });
+    var pill = $("#shiftPill");
+    pill.textContent = titleCase(state.shift) + " shift";
+    pill.className = "pill pill-shift " + state.shift;
   }
+
+  function currentSlots() { return state.slots[state.shift] || []; }
 
   function generateGrid(options) {
     options = options || {};
-    var config = readSetup();
-    var slots;
+    readSetup();
+
+    var built;
     try {
-      slots = buildSlots(config.start, config.end, config.duration, config.breakTime);
+      built = buildSlots(
+        state.shiftHours[state.shift].start,
+        state.shiftHours[state.shift].end,
+        state.duration,
+        state.breakTime
+      );
     } catch (err) {
       toast("Cannot build the grid", err.message, "error");
       return false;
     }
 
     var pool = state.rooms.filter(function (room) {
-      return !config.building || String(room.building_id) === String(config.building);
+      if (state.building && String(room.building_id) !== String(state.building)) return false;
+      if (state.roomType && room.room_type !== state.roomType) return false;
+      return true;
     });
     if (!pool.length) {
-      toast("No rooms", "No rooms exist for the selected building.", "error");
+      toast("No rooms", "No rooms match the selected building/type filter.", "error");
       return false;
     }
 
-    state.slots = slots;
-    state.days = config.days;
-    state.gridRooms = pool.slice(0, config.roomLimit);
-    state.config = config;
+    state.slots[state.shift] = built;
+    state.gridRooms = pool.slice(0, state.roomLimit);
     if (state.activeDay > state.days) state.activeDay = 1;
 
-    if (!options.keepPlacements) {
+    if (options.keepPlacements === false) {
       state.placements = [];
       state.conflicts = {};
     } else {
       dropOrphanPlacements();
     }
 
-    renderTabs();
-    renderGrid();
-    renderCourses();
-    updateCounters();
+    renderAll();
     if (!options.silent) {
-      toast("Grid ready", state.days + " day(s) x " + slots.length + " slots x " + state.gridRooms.length + " rooms.", "success");
+      toast("Grid ready",
+        titleCase(state.shift) + " shift · " + state.days + " day(s) × " + built.length + " slots × " +
+        state.gridRooms.length + " rooms.", "success");
     }
     persistConfig();
     return true;
   }
 
   function dropOrphanPlacements() {
-    var validSlot = {};
-    state.slots.forEach(function (s) { validSlot[s.start] = s.end; });
+    var valid = {};
+    ["morning", "evening"].forEach(function (shift) {
+      (state.slots[shift] || []).forEach(function (slot) { valid[shift + "|" + slot.start] = slot.end; });
+    });
     var validRoom = {};
-    state.gridRooms.forEach(function (r) { validRoom[r.id] = true; });
+    state.rooms.forEach(function (room) { validRoom[room.id] = true; });
 
     var kept = [], dropped = 0;
     state.placements.forEach(function (p) {
-      if (p.day <= state.days && validSlot[p.start] === p.end && validRoom[p.room_id]) kept.push(p);
+      var slotOk = valid[(p.shift || "morning") + "|" + p.start] === p.end;
+      if (p.day <= state.days && slotOk && validRoom[p.room_id]) kept.push(p);
       else dropped++;
     });
     state.placements = kept;
     if (dropped) toast("Some classes were removed", dropped + " class(es) no longer fit the new grid.", "warning");
   }
 
-  /* ------------------------------ rendering ------------------------------- */
+  /* ------------------------------- rendering ------------------------------ */
+  function renderAll() {
+    writeSetup();
+    renderTabs();
+    renderGrid();
+    renderCourses();
+    updateCounters();
+    updateHistoryButtons();
+  }
+
+  function shiftPlacements() {
+    return state.placements.filter(function (p) { return (p.shift || "morning") === state.shift; });
+  }
+
   function renderTabs() {
     var host = $("#dayTabs");
     host.innerHTML = "";
     for (var day = 1; day <= state.days; day++) {
       (function (d) {
-        var count = state.placements.filter(function (p) { return p.day === d; }).length;
+        var count = shiftPlacements().filter(function (p) { return p.day === d; }).length;
         var tab = el("button", "day-tab");
         tab.type = "button";
         tab.setAttribute("role", "tab");
         tab.setAttribute("aria-selected", d === state.activeDay ? "true" : "false");
+        tab.title = "Press " + d;
         tab.appendChild(document.createTextNode(WEEKDAYS[d - 1]));
         if (count) tab.appendChild(el("span", "tab-badge", count));
         tab.addEventListener("click", function () { state.activeDay = d; renderTabs(); renderGrid(); });
@@ -295,8 +458,9 @@
   }
 
   function placementAt(day, start, roomId) {
-    for (var i = 0; i < state.placements.length; i++) {
-      var p = state.placements[i];
+    var list = shiftPlacements();
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
       if (p.day === day && p.start === start && p.room_id === roomId) return p;
     }
     return null;
@@ -305,11 +469,12 @@
   function renderGrid() {
     var host = $("#timetableContainer");
     host.innerHTML = "";
+    var slots = currentSlots();
 
-    if (!state.slots.length) {
+    if (!slots.length) {
       var ph = el("div", "placeholder");
-      ph.appendChild(el("h3", null, "No grid yet"));
-      ph.appendChild(el("p", null, "Choose your working hours above and press Generate grid to begin."));
+      ph.appendChild(el("h3", null, "No grid for the " + state.shift + " shift yet"));
+      ph.appendChild(el("p", null, "Set the shift hours above and press Generate grid (Ctrl+G)."));
       host.appendChild(ph);
       return;
     }
@@ -317,9 +482,8 @@
     var table = el("table", "timetable");
     var thead = el("thead");
     var headRow = el("tr");
-    var corner = el("th", "corner", WEEKDAYS[state.activeDay - 1]);
-    headRow.appendChild(corner);
-    state.slots.forEach(function (slot) {
+    headRow.appendChild(el("th", "corner", WEEKDAYS[state.activeDay - 1]));
+    slots.forEach(function (slot) {
       headRow.appendChild(el("th", null, to12h(slot.start) + " - " + to12h(slot.end)));
     });
     thead.appendChild(headRow);
@@ -331,10 +495,10 @@
       var roomCell = el("th", "room-cell");
       roomCell.scope = "row";
       roomCell.appendChild(document.createTextNode(room.label));
-      roomCell.appendChild(el("small", null, "seats " + room.capacity));
+      roomCell.appendChild(el("small", null, room.room_type + " · " + room.capacity + " seats"));
       row.appendChild(roomCell);
 
-      state.slots.forEach(function (slot) {
+      slots.forEach(function (slot) {
         var cell = el("td", "slot");
         cell.dataset.start = slot.start;
         cell.dataset.end = slot.end;
@@ -352,7 +516,7 @@
 
   function renderPlacement(placement) {
     var course = findCourse(placement.course_id, placement.section) || {
-      name: "Course " + placement.course_id, color: "#dddddd", instructor: "", num_students: 0
+      name: "Course " + placement.course_id, color: "#dddddd", instructor: "", num_students: 0, code: ""
     };
     var conflicts = state.conflicts[placement.uid] || [];
     var hasError = conflicts.some(function (c) { return c.severity === "error"; });
@@ -363,8 +527,12 @@
     node.dataset.uid = placement.uid;
     node.style.backgroundColor = course.color;
     node.style.color = readableInk(course.color);
-    node.appendChild(el("div", "p-title", course.name + " - " + placement.section));
-    node.appendChild(el("div", "p-meta", (course.instructor || "Unassigned") + " - " + course.num_students + " std"));
+
+    var title = el("div", "p-title");
+    if (course.code) title.appendChild(el("span", "p-code", course.code));
+    title.appendChild(document.createTextNode(course.name + " - " + placement.section));
+    node.appendChild(title);
+    node.appendChild(el("div", "p-meta", (course.instructor || "Unassigned") + " · " + course.num_students + " std"));
 
     var remove = el("button", "p-remove", "\u00d7");
     remove.type = "button";
@@ -372,6 +540,7 @@
     remove.setAttribute("aria-label", "Remove " + course.name + " " + placement.section);
     remove.addEventListener("click", function (event) {
       event.stopPropagation();
+      snapshot();
       removePlacement(placement.uid);
     });
     node.appendChild(remove);
@@ -402,10 +571,9 @@
     var pill = $("#conflictCount");
     pill.textContent = errors ? errors + " clash(es)" : "No clashes";
     pill.className = "pill " + (errors ? "pill-error" : "pill-ok");
-    renderTabs();
   }
 
-  /* ---------------------------- drag & drop ------------------------------- */
+  /* ----------------------------- drag & drop ------------------------------ */
   function readDragPayload(event) {
     try { return JSON.parse(event.dataTransfer.getData("text/plain") || "{}"); }
     catch (err) { return {}; }
@@ -435,7 +603,8 @@
 
   function occupied(target, ignoreUid) {
     return state.placements.some(function (p) {
-      return p.uid !== ignoreUid && p.day === target.day && p.start === target.start && p.room_id === target.room_id;
+      return p.uid !== ignoreUid && (p.shift || "morning") === state.shift &&
+        p.day === target.day && p.start === target.start && p.room_id === target.room_id;
     });
   }
 
@@ -444,14 +613,16 @@
       toast("Slot taken", "That room is already booked for this time. Pick an empty cell.", "warning");
       return;
     }
+    snapshot();
     var placement = {
       uid: nextUid(), day: target.day, start: target.start, end: target.end,
-      room_id: target.room_id, course_id: courseId, section: section
+      room_id: target.room_id, course_id: courseId, section: section, shift: state.shift
     };
     state.placements.push(placement);
     state.dirty = true;
     renderGrid();
     renderCourses();
+    renderTabs();
     updateCounters();
     validatePlacement(placement, null);
   }
@@ -463,6 +634,7 @@
       toast("Slot taken", "That room is already booked for this time.", "warning");
       return;
     }
+    snapshot();
     var previous = { day: placement.day, start: placement.start, end: placement.end, room_id: placement.room_id };
     placement.day = target.day;
     placement.start = target.start;
@@ -470,6 +642,7 @@
     placement.room_id = target.room_id;
     state.dirty = true;
     renderGrid();
+    renderTabs();
     updateCounters();
     validatePlacement(placement, previous);
   }
@@ -481,14 +654,15 @@
     state.dirty = true;
     renderGrid();
     renderCourses();
+    renderTabs();
     updateCounters();
     revalidateAll({ silent: true });
   }
 
   function toAssignment(p) {
     return {
-      day: p.day, start_time: p.start, end_time: p.end,
-      room_id: p.room_id, course_id: p.course_id, section: p.section
+      day: p.day, start_time: p.start, end_time: p.end, room_id: p.room_id,
+      course_id: p.course_id, section: p.section, shift: p.shift || "morning"
     };
   }
 
@@ -515,11 +689,14 @@
           delete state.conflicts[placement.uid];
           toast("Clash detected", errors[0].message, "error");
         }
+        state.history.pop();       // the rejected action never happened
+        updateHistoryButtons();
       } else if (warnings.length) {
         toast("Scheduled with a warning", warnings[0].message, "warning");
       }
       renderGrid();
       renderCourses();
+      renderTabs();
       updateCounters();
       return result;
     }).catch(function (err) {
@@ -546,7 +723,7 @@
         renderGrid();
         updateCounters();
         if (!options.silent) {
-          if (result.ok) toast("All clear", "No clashes found in the whole week.", "success");
+          if (result.ok) toast("All clear", "No clashes anywhere in the week.", "success");
           else toast("Clashes found", (result.reports || []).length + " class(es) need attention.", "error");
         }
         return result;
@@ -559,8 +736,8 @@
     var body = $("#courseDialogBody");
     $("#courseDialogTitle").textContent = "Clash: " + course.name + " - " + placement.section;
     body.innerHTML = "";
-    var intro = el("p", "muted", WEEKDAYS[placement.day - 1] + ", " + to12h(placement.start) + " - " + to12h(placement.end));
-    body.appendChild(intro);
+    body.appendChild(el("p", "muted",
+      WEEKDAYS[placement.day - 1] + ", " + to12h(placement.start) + " - " + to12h(placement.end)));
     var list = el("ul", "conflict-list");
     conflicts.forEach(function (conflict) {
       var item = el("li", conflict.severity);
@@ -583,16 +760,19 @@
       .then(function (details) {
         var room = state.rooms.filter(function (r) { return r.id === placement.room_id; })[0];
         var conflicts = state.conflicts[placement.uid] || [];
-        var html = "";
-        $("#courseDialogTitle").textContent = details.name;
-        html += '<dl class="detail-grid">';
-        html += "<dt>Instructor</dt><dd>" + escapeHtml(details.instructor) + "</dd>";
+        $("#courseDialogTitle").textContent = (details.code ? details.code + " · " : "") + details.name;
+
+        var html = '<dl class="detail-grid">';
+        html += "<dt>Code</dt><dd>" + escapeHtml(details.code || "-") + "</dd>";
+        html += "<dt>Teacher</dt><dd>" + escapeHtml(details.instructor) + "</dd>";
         html += "<dt>Department</dt><dd>" + escapeHtml(details.department) + "</dd>";
-        html += "<dt>Section</dt><dd>" + escapeHtml(details.section) + "</dd>";
+        html += "<dt>Credit hours</dt><dd>" + escapeHtml(details.credit_hours) + "</dd>";
         html += "<dt>Students</dt><dd>" + details.num_students + "</dd>";
+        html += "<dt>Shift</dt><dd>" + escapeHtml(titleCase(placement.shift || "morning")) + "</dd>";
         html += "<dt>Slot</dt><dd>" + escapeHtml(WEEKDAYS[placement.day - 1] + ", " +
           to12h(placement.start) + " - " + to12h(placement.end)) + "</dd>";
-        html += "<dt>Room</dt><dd>" + escapeHtml(room ? room.label + " (seats " + room.capacity + ")" : "-") + "</dd>";
+        html += "<dt>Room</dt><dd>" + escapeHtml(room ? room.label + " (" + room.room_type + ", " +
+          room.capacity + " seats)" : "-") + "</dd>";
         html += "</dl>";
 
         if (conflicts.length) {
@@ -622,12 +802,32 @@
 
   /* ------------------------------ persistence ----------------------------- */
   function persistConfig() {
-    if (!state.config) return;
-    api("/api/settings", { method: "POST", body: state.config }).catch(function () { /* non fatal */ });
+    api("/api/settings", {
+      method: "POST",
+      body: {
+        days: state.days, duration: state.duration, breakTime: state.breakTime,
+        roomLimit: state.roomLimit, building: state.building, roomType: state.roomType,
+        shift: state.shift, shiftHours: state.shiftHours
+      }
+    }).catch(function () { /* non fatal */ });
+  }
+
+  function applyConfig(config) {
+    if (!config) return;
+    if (config.days) state.days = config.days;
+    if (config.duration) state.duration = config.duration;
+    if (config.breakTime !== undefined) state.breakTime = config.breakTime;
+    if (config.roomLimit) state.roomLimit = config.roomLimit;
+    if (config.building !== undefined) state.building = config.building;
+    if (config.roomType !== undefined) state.roomType = config.roomType;
+    if (config.shift === "morning" || config.shift === "evening") state.shift = config.shift;
+    if (config.shiftHours && config.shiftHours.morning && config.shiftHours.evening) {
+      state.shiftHours = config.shiftHours;
+    }
   }
 
   function saveToDatabase() {
-    var button = $("#saveToDatabase");
+    var button = $("[data-action='save']");
     button.disabled = true;
     api("/api/timetable", { method: "POST", body: { assignments: state.placements.map(toAssignment) } })
       .then(function (result) {
@@ -659,41 +859,42 @@
         toast("Nothing saved", "There is no timetable in the database yet.", "info");
         return;
       }
-      var maxDay = 1, starts = {};
+      snapshot();
+
+      var perShift = { morning: {}, evening: {} };
+      var maxDay = 1;
       entries.forEach(function (entry) {
+        var shift = entry.shift || "morning";
         maxDay = Math.max(maxDay, entry.day);
-        starts[entry.start_time] = entry.end_time;
+        perShift[shift][entry.start_time] = entry.end_time;
       });
 
-      // Rebuild a grid that is guaranteed to contain every saved class.
-      $("#totalDays").value = maxDay;
-      var times = Object.keys(starts).sort();
-      if (times.length) {
-        var duration = toMinutes(starts[times[0]]) - toMinutes(times[0]);
-        var gap = times.length > 1 ? (toMinutes(times[1]) - toMinutes(times[0]) - duration) : parseInt($("#breakTime").value, 10);
-        $("#startTime").value = times[0];
-        $("#endTime").value = starts[times[times.length - 1]];
-        if (duration > 0) $("#classDuration").value = duration;
-        if (gap >= 0) $("#breakTime").value = gap;
-      }
+      state.days = maxDay;
+      ["morning", "evening"].forEach(function (shift) {
+        var starts = Object.keys(perShift[shift]).sort(function (a, b) { return toMinutes(a) - toMinutes(b); });
+        if (!starts.length) return;
+        state.slots[shift] = starts.map(function (start) {
+          return { start: start, end: perShift[shift][start] };
+        });
+        state.shiftHours[shift] = { start: starts[0], end: perShift[shift][starts[starts.length - 1]] };
+      });
+
+      state.gridRooms = state.rooms.slice(0, Math.max(state.roomLimit, 1));
       var usedRooms = {};
       entries.forEach(function (e) { usedRooms[e.room_id] = true; });
-      $("#buildingFilter").value = "";
-      $("#roomLimit").value = Math.max(state.rooms.length, 1);
-
-      if (!generateGrid({ silent: true })) return;
+      state.rooms.forEach(function (room) {
+        if (usedRooms[room.id] && state.gridRooms.indexOf(room) === -1) state.gridRooms.push(room);
+      });
 
       state.placements = entries.map(function (entry) {
         return {
           uid: nextUid(), day: entry.day, start: entry.start_time, end: entry.end_time,
-          room_id: entry.room_id, course_id: entry.course_id, section: entry.section
+          room_id: entry.room_id, course_id: entry.course_id, section: entry.section,
+          shift: entry.shift || "morning"
         };
       });
-      dropOrphanPlacements();
       state.dirty = false;
-      renderGrid();
-      renderCourses();
-      updateCounters();
+      renderAll();
       toast("Loaded", state.placements.length + " class(es) restored from the database.", "success");
       revalidateAll({ silent: true });
     }).catch(function (err) { toast("Load failed", err.message, "error"); });
@@ -706,14 +907,67 @@
       .catch(function (err) { toast("Reset failed", err.message, "error"); });
   }
 
+  function autofill() {
+    var slots = currentSlots();
+    if (!slots.length) { toast("Generate a grid first", "", "warning"); return; }
+    api("/api/timetable/autofill", {
+      method: "POST",
+      body: {
+        assignments: state.placements.map(toAssignment),
+        days: state.days,
+        slots: slots,
+        room_ids: state.gridRooms.map(function (room) { return room.id; }),
+        shift: state.shift
+      }
+    }).then(function (result) {
+      var created = result.created || [];
+      if (!created.length) {
+        toast("Nothing to add", "Every section is already scheduled, or no free slot fits.", "info");
+        return;
+      }
+      snapshot();
+      created.forEach(function (entry) {
+        state.placements.push({
+          uid: nextUid(), day: entry.day, start: entry.start_time, end: entry.end_time,
+          room_id: entry.room_id, course_id: entry.course_id, section: entry.section, shift: entry.shift
+        });
+      });
+      state.dirty = true;
+      renderAll();
+      toast("Auto-filled", created.length + " section(s) placed. Review before saving.", "success");
+      revalidateAll({ silent: true });
+    }).catch(function (err) { toast("Auto-fill failed", err.message, "error"); });
+  }
+
   /* -------------------------------- exports ------------------------------- */
+  function exportExcel() {
+    if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
+    toast("Building workbook", "One worksheet per day…", "info", 2500);
+    api("/api/export/xlsx", {
+      method: "POST",
+      raw: true,
+      body: {
+        assignments: state.placements.map(toAssignment),
+        days: state.days,
+        shift: "all",
+        title: "University Timetable"
+      }
+    }).then(function (blob) {
+      downloadBlob(blob, "timetable.xlsx");
+      toast("Excel exported", "timetable.xlsx — Summary, one sheet per day, and By Teacher.", "success");
+    }).catch(function (err) {
+      toast("Excel export failed", err.message, "error");
+    });
+  }
+
   function buildPrintable() {
     var host = $("#printArea");
     host.innerHTML = "";
-    var title = el("h1", null, "University Timetable");
+    var title = el("h1", null, "University Timetable — " + titleCase(state.shift) + " shift");
     title.style.fontSize = "16px";
     host.appendChild(title);
 
+    var slots = currentSlots();
     for (var day = 1; day <= state.days; day++) {
       var wrapper = el("div", "pdf-day");
       wrapper.appendChild(el("h2", null, WEEKDAYS[day - 1]));
@@ -721,7 +975,7 @@
       var thead = el("thead");
       var headRow = el("tr");
       headRow.appendChild(el("th", null, "Room"));
-      state.slots.forEach(function (slot) {
+      slots.forEach(function (slot) {
         headRow.appendChild(el("th", null, to12h(slot.start) + "-" + to12h(slot.end)));
       });
       thead.appendChild(headRow);
@@ -732,12 +986,13 @@
         state.gridRooms.forEach(function (room) {
           var row = el("tr");
           row.appendChild(el("td", null, room.label));
-          state.slots.forEach(function (slot) {
+          slots.forEach(function (slot) {
             var placement = placementAt(d, slot.start, room.id);
             var cell = el("td");
             if (placement) {
               var course = findCourse(placement.course_id, placement.section);
-              cell.textContent = (course ? course.name : placement.course_id) + " - " + placement.section;
+              cell.textContent = ((course && course.code) ? course.code + " " : "") +
+                (course ? course.name : placement.course_id) + " - " + placement.section;
               cell.style.backgroundColor = course ? course.color : "#eeeeee";
             }
             row.appendChild(cell);
@@ -753,7 +1008,7 @@
   }
 
   function exportPdf() {
-    if (!state.slots.length) { toast("Nothing to export", "Generate a grid first.", "warning"); return; }
+    if (!currentSlots().length) { toast("Nothing to export", "Generate a grid first.", "warning"); return; }
     var host = buildPrintable();
     if (typeof window.html2pdf !== "function") {
       toast("PDF engine missing", "Falling back to the browser print dialog.", "warning");
@@ -763,7 +1018,7 @@
     host.style.display = "block";
     window.html2pdf().set({
       margin: 8,
-      filename: "timetable.pdf",
+      filename: "timetable-" + state.shift + ".pdf",
       image: { type: "jpeg", quality: 0.96 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: "mm", format: "a3", orientation: "landscape" }
@@ -778,31 +1033,509 @@
 
   function exportCsv() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
-    var rows = [["Day", "Start", "End", "Room", "Course", "Section", "Instructor", "Students"]];
+    var rows = [["Day", "Shift", "Start", "End", "Room", "Code", "Course", "Section", "Teacher", "Students"]];
     state.placements.slice().sort(function (a, b) {
       return a.day - b.day || toMinutes(a.start) - toMinutes(b.start);
     }).forEach(function (p) {
       var course = findCourse(p.course_id, p.section) || {};
       var room = state.rooms.filter(function (r) { return r.id === p.room_id; })[0];
       rows.push([
-        WEEKDAYS[p.day - 1], p.start, p.end, room ? room.label : p.room_id,
-        course.name || p.course_id, p.section, course.instructor || "", course.num_students || 0
+        WEEKDAYS[p.day - 1], titleCase(p.shift || "morning"), p.start, p.end,
+        room ? room.label : p.room_id, course.code || "", course.name || p.course_id, p.section,
+        course.instructor || "", course.num_students || 0
       ]);
     });
     var csv = rows.map(function (row) {
       return row.map(function (cell) { return '"' + String(cell).replace(/"/g, '""') + '"'; }).join(",");
     }).join("\r\n");
-
-    var blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
-    var url = URL.createObjectURL(blob);
-    var link = el("a");
-    link.href = url;
-    link.download = "timetable.csv";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    downloadBlob(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" }), "timetable.csv");
     toast("CSV exported", "timetable.csv downloaded.", "success");
+  }
+
+  /* ============================ data management ============================ */
+  function refreshCatalogue() {
+    return Promise.all([
+      api("/api/rooms"),
+      api("/api/courses"),
+      api("/api/instructors"),
+      api("/api/buildings")
+    ]).then(function (results) {
+      state.rooms = results[0] || [];
+      state.courses = results[1] || [];
+      state.instructors = results[2] || [];
+      state.buildings = results[3] || [];
+      fillBuildingControls();
+      fillTeacherSelect();
+      renderCourses();
+      return true;
+    });
+  }
+
+  function fillBuildingControls() {
+    var select = $("#buildingFilter");
+    var current = select.value;
+    select.innerHTML = '<option value="">All buildings</option>';
+    state.buildings.forEach(function (building) {
+      var option = el("option", null, "Building " + building.name);
+      option.value = building.id;
+      select.appendChild(option);
+    });
+    select.value = current;
+
+    var list = $("#buildingOptions");
+    list.innerHTML = "";
+    state.buildings.forEach(function (building) {
+      var option = el("option");
+      option.value = building.name;
+      list.appendChild(option);
+    });
+  }
+
+  function fillTeacherSelect() {
+    var select = $("#courseTeacher");
+    var current = select.value;
+    select.innerHTML = '<option value="">Unassigned</option>';
+    state.instructors.forEach(function (teacher) {
+      var option = el("option", null, teacher.name + " (" + teacher.department + ")");
+      option.value = teacher.id;
+      select.appendChild(option);
+    });
+    select.value = current;
+  }
+
+  /* ---- teacher ---- */
+  function openTeacherDialog(teacher) {
+    $("#teacherDialogTitle").textContent = teacher ? "Edit teacher" : "Add teacher";
+    $("#teacherId").value = teacher ? teacher.id : "";
+    $("#teacherName").value = teacher ? teacher.name : "";
+    $("#teacherEmail").value = teacher ? teacher.email : "";
+    $("#teacherDept").value = teacher ? teacher.department : "";
+    $("#teacherShift").value = teacher ? teacher.shift : "both";
+    openDialog("#teacherDialog");
+  }
+
+  function submitTeacher(event) {
+    event.preventDefault();
+    var id = $("#teacherId").value;
+    var body = {
+      name: $("#teacherName").value,
+      email: $("#teacherEmail").value,
+      department: $("#teacherDept").value,
+      shift: $("#teacherShift").value
+    };
+    api(id ? "/api/instructors/" + id : "/api/instructors", { method: id ? "PUT" : "POST", body: body })
+      .then(function (teacher) {
+        closeDialogs();
+        toast(id ? "Teacher updated" : "Teacher added", teacher.name, "success");
+        return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
+      })
+      .catch(function (err) { toast("Could not save the teacher", err.message, "error"); });
+  }
+
+  /* ---- room ---- */
+  function openRoomDialog(room) {
+    $("#roomDialogTitle").textContent = room ? "Edit classroom" : "Add classroom";
+    $("#roomId").value = room ? room.id : "";
+    $("#roomNumber").value = room ? room.room_number : "";
+    $("#roomBuilding").value = room ? room.building_name : "";
+    $("#roomCapacity").value = room ? room.capacity : 60;
+    $("#roomType").value = room ? room.room_type : "Classroom";
+    openDialog("#roomDialog");
+  }
+
+  function submitRoom(event) {
+    event.preventDefault();
+    var id = $("#roomId").value;
+    var body = {
+      room_number: $("#roomNumber").value,
+      building_name: $("#roomBuilding").value,
+      capacity: $("#roomCapacity").value,
+      room_type: $("#roomType").value
+    };
+    api(id ? "/api/rooms/" + id : "/api/rooms", { method: id ? "PUT" : "POST", body: body })
+      .then(function () {
+        closeDialogs();
+        toast(id ? "Room updated" : "Room added", body.room_number, "success");
+        return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
+      })
+      .catch(function (err) { toast("Could not save the room", err.message, "error"); });
+  }
+
+  function addBuilding() {
+    var name = window.prompt("Name of the new building (e.g. D or Science Block):", "");
+    if (!name) return;
+    api("/api/buildings", { method: "POST", body: { name: name } })
+      .then(function (building) {
+        toast("Building added", building.name, "success");
+        return refreshCatalogue();
+      })
+      .catch(function (err) { toast("Could not add the building", err.message, "error"); });
+  }
+
+  /* ---- course ---- */
+  function openCourseDialog(course) {
+    $("#courseFormTitle").textContent = course ? "Edit course" : "Add course";
+    $("#courseIdField").value = course ? course.id : "";
+    $("#courseCode").value = course ? course.code : "";
+    $("#courseName").value = course ? course.name : "";
+    $("#courseDept").value = course ? course.department : "";
+    $("#courseCredits").value = course ? course.credit_hours : 3;
+    $("#courseColor").value = (course && course.color) ? course.color : "#a9d2e1";
+    $("#courseSections").value = course ? (course.sections || []).map(function (s) { return s.section; }).join(", ") : "A";
+    $("#courseTeacher").value = (course && course.sections && course.sections[0] && course.sections[0].instructor_id)
+      ? course.sections[0].instructor_id : "";
+    openDialog("#courseFormDialog");
+  }
+
+  function submitCourse(event) {
+    event.preventDefault();
+    var id = $("#courseIdField").value;
+    var teacherId = $("#courseTeacher").value;
+    var sections = ($("#courseSections").value || "")
+      .split(/[,\s]+/)
+      .map(function (value) { return value.trim().toUpperCase(); })
+      .filter(Boolean)
+      .map(function (section) { return { section: section, instructor_id: teacherId || null }; });
+
+    var body = {
+      code: $("#courseCode").value,
+      name: $("#courseName").value,
+      department: $("#courseDept").value,
+      credit_hours: $("#courseCredits").value,
+      color: $("#courseColor").value,
+      sections: sections
+    };
+    api(id ? "/api/courses/" + id : "/api/courses", { method: id ? "PUT" : "POST", body: body })
+      .then(function (course) {
+        closeDialogs();
+        toast(id ? "Course updated" : "Course added", course.code + " " + course.name, "success");
+        return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
+      })
+      .catch(function (err) { toast("Could not save the course", err.message, "error"); });
+  }
+
+  function addSection() {
+    api("/api/admin/courses").then(function (courses) {
+      if (!courses.length) { toast("Add a course first", "", "warning"); return; }
+      var listing = courses.slice(0, 40).map(function (c) { return c.code + " — " + c.name; }).join("\n");
+      var code = window.prompt("Course code to add a section to:\n\n" + listing, courses[0].code);
+      if (!code) return;
+      var match = courses.filter(function (c) { return c.code.toUpperCase() === code.trim().toUpperCase(); })[0];
+      if (!match) { toast("Unknown course code", code, "error"); return; }
+      var section = window.prompt("New section for " + match.code + " (e.g. D):", "");
+      if (!section) return;
+      api("/api/courses/" + match.id + "/sections", { method: "POST", body: { section: section } })
+        .then(function () {
+          toast("Section added", match.code + " - " + section.toUpperCase(), "success");
+          return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
+        })
+        .catch(function (err) { toast("Could not add the section", err.message, "error"); });
+    });
+  }
+
+  /* ---- manage dialog ---- */
+  function openManage(tab) {
+    if (tab) state.manageTab = tab;
+    $$("#manageDialog .tab").forEach(function (button) {
+      button.setAttribute("aria-selected", button.dataset.tab === state.manageTab ? "true" : "false");
+    });
+    $("#manageSearch").value = "";
+    openDialog("#manageDialog");
+    renderManage();
+  }
+
+  function renderManage() {
+    var host = $("#managePanel");
+    var query = ($("#manageSearch").value || "").trim().toLowerCase();
+    host.innerHTML = '<p class="muted">Loading…</p>';
+
+    var addButton = $("#manageAddBtn");
+    addButton.textContent = { teachers: "+ Add teacher", rooms: "+ Add classroom", courses: "+ Add course" }[state.manageTab];
+
+    function table(headers, rows) {
+      var element = el("table", "manage-table");
+      var thead = el("thead"), headRow = el("tr");
+      headers.forEach(function (heading) { headRow.appendChild(el("th", null, heading)); });
+      thead.appendChild(headRow);
+      element.appendChild(thead);
+      var tbody = el("tbody");
+      rows.forEach(function (row) { tbody.appendChild(row); });
+      element.appendChild(tbody);
+      return rows.length ? element : el("p", "muted", "Nothing here yet.");
+    }
+
+    function actions(onEdit, onDelete) {
+      var cell = el("td", "row-actions");
+      var edit = el("button", "btn btn-tiny", "Edit");
+      edit.type = "button";
+      edit.addEventListener("click", onEdit);
+      var remove = el("button", "btn btn-tiny btn-danger", "Delete");
+      remove.type = "button";
+      remove.addEventListener("click", onDelete);
+      cell.appendChild(edit);
+      cell.appendChild(remove);
+      return cell;
+    }
+
+    function confirmDelete(what, request) {
+      if (!window.confirm("Delete " + what + "?")) return;
+      request()
+        .then(function () {
+          toast("Deleted", what, "success");
+          return refreshCatalogue().then(renderManage);
+        })
+        .catch(function (err) { toast("Could not delete", err.message, "error"); });
+    }
+
+    if (state.manageTab === "teachers") {
+      var teachers = state.instructors.filter(function (teacher) {
+        return !query || (teacher.name + " " + teacher.email + " " + teacher.department).toLowerCase().indexOf(query) >= 0;
+      });
+      host.innerHTML = "";
+      host.appendChild(table(["Name", "Email", "Department", "Shift", "Sections", ""], teachers.map(function (teacher) {
+        var row = el("tr");
+        row.appendChild(el("td", null, teacher.name));
+        row.appendChild(el("td", null, teacher.email || "-"));
+        row.appendChild(el("td", null, teacher.department));
+        row.appendChild(el("td", null, titleCase(teacher.shift)));
+        row.appendChild(el("td", null, teacher.sections));
+        row.appendChild(actions(
+          function () { openTeacherDialog(teacher); },
+          function () {
+            confirmDelete(teacher.name, function () {
+              return api("/api/instructors/" + teacher.id, { method: "DELETE" });
+            });
+          }
+        ));
+        return row;
+      })));
+      return;
+    }
+
+    if (state.manageTab === "rooms") {
+      var rooms = state.rooms.filter(function (room) {
+        return !query || (room.label + " " + room.room_type).toLowerCase().indexOf(query) >= 0;
+      });
+      host.innerHTML = "";
+      host.appendChild(table(["Room", "Building", "Type", "Capacity", ""], rooms.map(function (room) {
+        var row = el("tr");
+        row.appendChild(el("td", null, room.room_number));
+        row.appendChild(el("td", null, room.building_name));
+        row.appendChild(el("td", null, room.room_type));
+        row.appendChild(el("td", null, room.capacity));
+        row.appendChild(actions(
+          function () { openRoomDialog(room); },
+          function () {
+            confirmDelete("room " + room.label, function () {
+              return api("/api/rooms/" + room.id, { method: "DELETE" });
+            });
+          }
+        ));
+        return row;
+      })));
+      return;
+    }
+
+    api("/api/admin/courses").then(function (courses) {
+      var filtered = courses.filter(function (course) {
+        return !query || (course.code + " " + course.name + " " + course.department).toLowerCase().indexOf(query) >= 0;
+      });
+      host.innerHTML = "";
+      host.appendChild(table(["Code", "Course", "Dept", "Cr", "Sections", ""], filtered.map(function (course) {
+        var row = el("tr");
+        var code = el("td");
+        code.appendChild(el("span", "code-chip", course.code));
+        row.appendChild(code);
+        row.appendChild(el("td", null, course.name));
+        row.appendChild(el("td", null, course.department));
+        row.appendChild(el("td", null, course.credit_hours));
+
+        var sectionCell = el("td", "section-cell");
+        (course.sections || []).forEach(function (section) {
+          var chip = el("span", "section-chip");
+          chip.appendChild(document.createTextNode(section.section + " · " + section.instructor));
+          var kill = el("button", "chip-x", "×");
+          kill.type = "button";
+          kill.title = "Remove section " + section.section;
+          kill.addEventListener("click", function () {
+            confirmDelete("section " + course.code + "-" + section.section, function () {
+              return api("/api/courses/" + course.id + "/sections/" + encodeURIComponent(section.section),
+                { method: "DELETE" });
+            });
+          });
+          chip.appendChild(kill);
+          sectionCell.appendChild(chip);
+        });
+        row.appendChild(sectionCell);
+
+        row.appendChild(actions(
+          function () { openCourseDialog(course); },
+          function () {
+            confirmDelete(course.code + " " + course.name, function () {
+              return api("/api/courses/" + course.id, { method: "DELETE" });
+            });
+          }
+        ));
+        return row;
+      })));
+    });
+  }
+
+  /* ---------------------------- shortcuts engine --------------------------- */
+  function comboFor(event) {
+    var parts = [];
+    if (event.ctrlKey || event.metaKey) parts.push("Ctrl");
+    if (event.altKey) parts.push("Alt");
+    if (event.shiftKey) parts.push("Shift");
+    var key = event.key;
+    if (key === " ") key = "Space";
+    if (key && key.length === 1) key = key.toUpperCase();
+    parts.push(key);
+    return parts.join("+");
+  }
+
+  function renderShortcutsDialog() {
+    var host = $("#shortcutsBody");
+    host.innerHTML = "";
+    var groups = {};
+    SHORTCUTS.forEach(function (item) {
+      (groups[item.group] = groups[item.group] || []).push(item);
+    });
+    Object.keys(groups).forEach(function (group) {
+      var column = el("div", "shortcut-group");
+      column.appendChild(el("h4", null, group));
+      var list = el("dl");
+      groups[group].forEach(function (item) {
+        var term = el("dt");
+        item.combo.split(" ").forEach(function (chunk, index) {
+          if (index) term.appendChild(document.createTextNode(" "));
+          if (chunk === "…") { term.appendChild(document.createTextNode(" … ")); return; }
+          chunk.split("+").forEach(function (key, keyIndex) {
+            if (keyIndex) term.appendChild(document.createTextNode("+"));
+            term.appendChild(el("kbd", null, key));
+          });
+        });
+        list.appendChild(term);
+        list.appendChild(el("dd", null, item.label));
+      });
+      column.appendChild(list);
+      host.appendChild(column);
+    });
+  }
+
+  function decorateButtonTooltips() {
+    var byAction = {};
+    SHORTCUTS.forEach(function (item) {
+      if (item.action && !byAction[item.action]) byAction[item.action] = item.combo;
+    });
+    $$("[data-action]").forEach(function (button) {
+      var combo = byAction[button.dataset.action];
+      if (!combo) return;
+      // Ignore any <kbd> hint already printed on the button, so the tooltip
+      // never reads "Generate grid Ctrl+G (Ctrl+G)".
+      var label = Array.prototype.filter
+        .call(button.childNodes, function (node) { return !(node.tagName === "KBD"); })
+        .map(function (node) { return node.textContent || ""; })
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      button.title = (label || button.dataset.action) + "  (" + combo + ")";
+    });
+  }
+
+  var ACTIONS = {
+    addTeacher: function () { openTeacherDialog(null); },
+    addRoom: function () { openRoomDialog(null); },
+    addCourse: function () { openCourseDialog(null); },
+    addBuilding: addBuilding,
+    addSection: addSection,
+    manage: function () { openManage(); },
+    undo: undo,
+    redo: redo,
+    removeSelected: function () {
+      if (!state.selectedUid) { toast("Nothing selected", "Click a class first.", "info", 2500); return; }
+      snapshot();
+      removePlacement(state.selectedUid);
+    },
+    clearGrid: function () {
+      if (!state.placements.length) { toast("Already empty", "", "info", 2000); return; }
+      if (!window.confirm("Remove every class from the grid? (The saved timetable is untouched.)")) return;
+      snapshot();
+      state.placements = [];
+      state.conflicts = {};
+      state.dirty = true;
+      renderAll();
+    },
+    generate: function () { generateGrid({}); },
+    save: saveToDatabase,
+    load: loadFromDatabase,
+    validate: function () { revalidateAll({}); },
+    autofill: autofill,
+    exportExcel: exportExcel,
+    exportPdf: exportPdf,
+    exportCsv: exportCsv,
+    print: function () { buildPrintable(); window.print(); },
+    resetSaved: resetSavedTimetable,
+    shiftMorning: function () { switchShift("morning"); },
+    shiftEvening: function () { switchShift("evening"); },
+    focusSearch: function () { $("#courseSearch").focus(); $("#courseSearch").select(); },
+    toggleSidebar: toggleSidebar,
+    shortcuts: function () { renderShortcutsDialog(); openDialog("#shortcutsDialog"); },
+    help: function () { openDialog("#helpDialog"); }
+  };
+
+  function runAction(name) {
+    var fn = ACTIONS[name];
+    if (fn) fn();
+  }
+
+  function switchShift(shift) {
+    if (state.shift === shift) return;
+    readSetup();
+    state.shift = shift;
+    writeSetup();
+    if (!currentSlots().length) generateGrid({ silent: true });
+    else renderAll();
+    persistConfig();
+    toast(titleCase(shift) + " shift", "Showing " + shiftPlacements().length + " class(es).", "info", 2500);
+  }
+
+  function toggleSidebar() {
+    var sidebar = $("#sidebar");
+    var button = $("#sidebarToggle");
+    var collapsed = sidebar.classList.toggle("collapsed");
+    button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    button.innerHTML = collapsed ? "&#10095;" : "&#10094;";
+  }
+
+  function handleKeydown(event) {
+    if (event.key === "Escape") { closeDialogs(); return; }
+
+    var target = event.target || {};
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || "") || target.isContentEditable;
+    var combo = comboFor(event);
+
+    // Day switching with the number row - only when not typing.
+    if (!typing && !event.ctrlKey && !event.metaKey && !event.altKey && /^[1-7]$/.test(event.key)) {
+      var day = parseInt(event.key, 10);
+      if (day <= state.days) {
+        state.activeDay = day;
+        renderTabs();
+        renderGrid();
+        event.preventDefault();
+      }
+      return;
+    }
+
+    for (var i = 0; i < SHORTCUTS.length; i++) {
+      var item = SHORTCUTS[i];
+      if (!item.action || item.combo !== combo) continue;
+      // Plain keys (Delete) must not fire while the user is typing.
+      if (typing && !(event.ctrlKey || event.metaKey || event.altKey)) return;
+      event.preventDefault();
+      runAction(item.action);
+      return;
+    }
   }
 
   /* -------------------------------- startup ------------------------------- */
@@ -818,58 +1551,49 @@
       event.preventDefault();
       host.classList.remove("dragover");
       var payload = readDragPayload(event);
-      if (payload.type === "placed") removePlacement(payload.uid);
+      if (payload.type === "placed") { snapshot(); removePlacement(payload.uid); }
     });
   }
 
   function wireEvents() {
     $("#setupForm").addEventListener("submit", function (event) {
       event.preventDefault();
-      if (state.placements.length &&
-        !window.confirm("Rebuilding the grid keeps classes that still fit. Continue?")) return;
-      generateGrid({ keepPlacements: true });
+      generateGrid({});
+    });
+
+    $$("[data-action]").forEach(function (button) {
+      if (button.type === "submit") return;
+      button.addEventListener("click", function () { runAction(button.dataset.action); });
+    });
+
+    $$(".seg").forEach(function (button) {
+      button.addEventListener("click", function () { switchShift(button.dataset.shift); });
     });
 
     $("#courseSearch").addEventListener("input", renderCourses);
     $("#hidePlaced").addEventListener("change", renderCourses);
+    $("#sidebarToggle").addEventListener("click", toggleSidebar);
 
-    $("#sidebarToggle").addEventListener("click", function () {
-      var sidebar = $("#sidebar");
-      var collapsed = sidebar.classList.toggle("collapsed");
-      this.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      this.innerHTML = collapsed ? "&#10095;" : "&#10094;";
+    $("#teacherForm").addEventListener("submit", submitTeacher);
+    $("#roomForm").addEventListener("submit", submitRoom);
+    $("#courseForm").addEventListener("submit", submitCourse);
+
+    $$("#manageDialog .tab").forEach(function (tab) {
+      tab.addEventListener("click", function () { openManage(tab.dataset.tab); });
+    });
+    $("#manageSearch").addEventListener("input", renderManage);
+    $("#manageAddBtn").addEventListener("click", function () {
+      if (state.manageTab === "teachers") openTeacherDialog(null);
+      else if (state.manageTab === "rooms") openRoomDialog(null);
+      else openCourseDialog(null);
     });
 
-    $("#saveToDatabase").addEventListener("click", saveToDatabase);
-    $("#loadFromDatabase").addEventListener("click", loadFromDatabase);
-    $("#validateAll").addEventListener("click", function () { revalidateAll({}); });
-    $("#exportPdf").addEventListener("click", exportPdf);
-    $("#exportCsv").addEventListener("click", exportCsv);
-    $("#printView").addEventListener("click", function () { buildPrintable(); window.print(); });
-    $("#clearGrid").addEventListener("click", function () {
-      if (!state.placements.length) { toast("Already empty", "", "info"); return; }
-      if (!window.confirm("Remove every class from the grid? (The saved timetable is untouched.)")) return;
-      state.placements = [];
-      state.conflicts = {};
-      state.dirty = true;
-      renderGrid(); renderCourses(); updateCounters();
-    });
-    $("#resetTimetable").addEventListener("click", resetSavedTimetable);
-    $("#helpButton").addEventListener("click", function () { openDialog("#helpDialog"); });
-
-    $$("[data-close-dialog]").forEach(function (btn) { btn.addEventListener("click", closeDialogs); });
+    $$("[data-close-dialog]").forEach(function (button) { button.addEventListener("click", closeDialogs); });
     $$(".dialog").forEach(function (dialog) {
       dialog.addEventListener("click", function (event) { if (event.target === dialog) closeDialogs(); });
     });
 
-    document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape") closeDialogs();
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        saveToDatabase();
-      }
-      if (event.key === "Delete" && state.selectedUid) removePlacement(state.selectedUid);
-    });
+    document.addEventListener("keydown", handleKeydown);
 
     window.addEventListener("beforeunload", function (event) {
       if (state.dirty && state.placements.length) {
@@ -879,6 +1603,8 @@
     });
 
     wireSidebarDropZone();
+    decorateButtonTooltips();
+    renderShortcutsDialog();
   }
 
   function setStatus(text, kind) {
@@ -892,41 +1618,27 @@
 
     api("/api/health").then(function (health) {
       var stats = health.stats || {};
-      setStatus((health.backend === "sqlite" ? "Local database" : "Server database") + " - " +
-        (stats.courses || 0) + " courses, " + (stats.rooms || 0) + " rooms", "pill-ok");
+      setStatus((health.backend === "sqlite" ? "Local database" : "Server database") + " · " +
+        (stats.courses || 0) + " courses · " + (stats.rooms || 0) + " rooms", "pill-ok");
     }).catch(function (err) {
       setStatus("Database offline", "pill-error");
       toast("Database problem", err.message, "error", 12000);
     });
 
-    Promise.all([api("/api/rooms"), api("/api/courses")])
-      .then(function (results) {
-        state.rooms = results[0] || [];
-        state.courses = results[1] || [];
-
-        var select = $("#buildingFilter");
-        var seen = {};
-        state.rooms.forEach(function (room) {
-          if (seen[room.building_id]) return;
-          seen[room.building_id] = true;
-          var option = el("option", null, "Building " + room.building_name);
-          option.value = room.building_id;
-          select.appendChild(option);
-        });
-        $("#roomLimit").value = Math.min(12, state.rooms.length || 12);
-
-        renderCourses();
+    refreshCatalogue()
+      .then(function () {
+        state.roomLimit = Math.min(12, state.rooms.length || 12);
         return api("/api/settings").catch(function () { return {}; });
       })
       .then(function (config) {
-        applySetup(config);
+        applyConfig(config);
         generateGrid({ silent: true });
         return api("/api/timetable").catch(function () { return { entries: [] }; });
       })
       .then(function (data) {
         if (data && data.entries && data.entries.length) {
           toast("Saved timetable available",
-            data.entries.length + " class(es) are stored. Press \u201cLoad saved\u201d to restore them.", "info", 9000);
+            data.entries.length + " class(es) are stored. Press Ctrl+O to restore them.", "info", 9000);
         }
       })
       .catch(function (err) { toast("Startup problem", err.message, "error", 10000); });

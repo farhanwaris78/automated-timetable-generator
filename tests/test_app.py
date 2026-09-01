@@ -6,6 +6,7 @@ Run with:  python -m pytest -q
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -284,3 +285,259 @@ def test_database_failure_is_reported_gracefully(tmp_path):
     assert test_client.get("/").status_code == 200          # UI still loads
     assert test_client.get("/api/health").status_code == 503
     assert test_client.get("/api/courses").status_code == 503
+
+
+# =========================================================================== #
+# v2.1 - catalogue management, shifts, auto-fill, Excel export
+# =========================================================================== #
+from timetable.catalog import CatalogService  # noqa: E402
+from timetable.exporters import build_workbook, openpyxl_available  # noqa: E402
+
+
+@pytest.fixture()
+def catalog(settings: Settings) -> CatalogService:
+    return CatalogService(init_database(settings.database_url))
+
+
+# ------------------------------- teachers ---------------------------------- #
+def test_add_edit_delete_teacher(client):
+    created = client.post("/api/instructors", json={
+        "name": "Dr. New Person", "email": "new@uni.edu", "department": "CS", "shift": "evening"
+    })
+    assert created.status_code == 201
+    teacher_id = created.get_json()["id"]
+
+    listing = client.get("/api/instructors").get_json()
+    assert any(t["id"] == teacher_id and t["shift"] == "evening" for t in listing)
+
+    updated = client.put(f"/api/instructors/{teacher_id}", json={"name": "Dr. Renamed", "department": "SE"})
+    assert updated.get_json()["name"] == "Dr. Renamed"
+
+    assert client.delete(f"/api/instructors/{teacher_id}").status_code == 200
+    assert not any(t["id"] == teacher_id for t in client.get("/api/instructors").get_json())
+
+
+def test_teacher_validation(client):
+    assert client.post("/api/instructors", json={"name": "  "}).status_code == 400
+    assert client.post("/api/instructors", json={"name": "X", "email": "not-an-email"}).status_code == 400
+    client.post("/api/instructors", json={"name": "Unique Person"})
+    assert client.post("/api/instructors", json={"name": "unique person"}).status_code == 400  # case-insensitive
+
+
+def test_busy_teacher_cannot_be_deleted(client):
+    teachers = client.get("/api/instructors").get_json()
+    busy = next(t for t in teachers if t["sections"] > 0)
+    response = client.delete(f"/api/instructors/{busy['id']}")
+    assert response.status_code == 400
+    assert "section" in response.get_json()["message"].lower()
+
+
+# --------------------------------- rooms ----------------------------------- #
+def test_add_room_creating_its_building_on_the_fly(client):
+    response = client.post("/api/rooms", json={
+        "room_number": "Z-9", "building_name": "New Block", "capacity": 35, "room_type": "Lab"
+    })
+    assert response.status_code == 201
+    room_id = response.get_json()["id"]
+
+    rooms = client.get("/api/rooms").get_json()
+    room = next(r for r in rooms if r["id"] == room_id)
+    assert room["room_type"] == "Lab" and room["capacity"] == 35
+    assert any(b["name"] == "New Block" for b in client.get("/api/buildings").get_json())
+
+    assert client.delete(f"/api/rooms/{room_id}").status_code == 200
+
+
+def test_duplicate_room_in_same_building_rejected(client):
+    first = client.post("/api/rooms", json={"room_number": "777", "building_name": "A"})
+    assert first.status_code == 201
+    assert client.post("/api/rooms", json={"room_number": "777", "building_name": "A"}).status_code == 400
+    # ... but the same number in another building is fine
+    assert client.post("/api/rooms", json={"room_number": "777", "building_name": "B"}).status_code == 201
+
+
+def test_room_used_by_saved_timetable_cannot_be_deleted(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1, "course_id": 101, "section": "A"}
+    ]})
+    assert client.delete("/api/rooms/1").status_code == 400
+
+
+def test_invalid_room_payloads(client):
+    assert client.post("/api/rooms", json={"room_number": "", "building_name": "A"}).status_code == 400
+    assert client.post("/api/rooms", json={"room_number": "1", "building_name": "A", "capacity": 0}).status_code == 400
+    assert client.post("/api/rooms", json={"room_number": "1", "building_name": "A", "room_type": "Cave"}).status_code == 400
+
+
+# ----------------------------- courses & codes ------------------------------ #
+def test_add_course_with_code_and_sections(client):
+    teacher_id = client.get("/api/instructors").get_json()[0]["id"]
+    response = client.post("/api/courses", json={
+        "code": "cs5099", "name": "Advanced Topics", "department": "Computer Science",
+        "credit_hours": 4, "color": "#123456",
+        "sections": [{"section": "a", "instructor_id": teacher_id}, {"section": "b"}],
+    })
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["code"] == "CS5099"          # normalised to upper case
+
+    admin = next(c for c in client.get("/api/admin/courses").get_json() if c["id"] == body["id"])
+    assert {s["section"] for s in admin["sections"]} == {"A", "B"}
+    assert admin["sections"][0]["instructor_id"] == teacher_id
+
+    catalogue = client.get("/api/courses").get_json()
+    assert any(c["code"] == "CS5099" and c["credit_hours"] == 4 for c in catalogue)
+
+
+def test_course_code_must_be_unique_and_valid(client):
+    client.post("/api/courses", json={"code": "CS7000", "name": "One"})
+    assert client.post("/api/courses", json={"code": "cs7000", "name": "Two"}).status_code == 400
+    assert client.post("/api/courses", json={"code": "", "name": "Three"}).status_code == 400
+    assert client.post("/api/courses", json={"code": "BAD/CODE", "name": "Four"}).status_code == 400
+    assert client.post("/api/courses", json={"code": "OK1", "name": "", }).status_code == 400
+    assert client.post("/api/courses", json={"code": "OK2", "name": "Five", "color": "red"}).status_code == 400
+
+
+def test_course_gets_an_automatic_colour(client):
+    body = client.post("/api/courses", json={"code": "CS7100", "name": "Auto Colour"}).get_json()
+    assert re.match(r"^#[0-9A-Fa-f]{6}$", body["color"])
+
+
+def test_sections_can_be_added_and_removed(client):
+    course_id = client.post("/api/courses", json={"code": "CS7200", "name": "Sectioned"}).get_json()["id"]
+    assert client.post(f"/api/courses/{course_id}/sections", json={"section": "z"}).status_code == 201
+    admin = next(c for c in client.get("/api/admin/courses").get_json() if c["id"] == course_id)
+    assert [s["section"] for s in admin["sections"]] == ["Z"]
+    assert client.delete(f"/api/courses/{course_id}/sections/Z").status_code == 200
+    assert client.delete(f"/api/courses/{course_id}/sections/Z").status_code == 400   # already gone
+
+
+def test_course_in_saved_timetable_cannot_be_deleted(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1, "course_id": 101, "section": "A"}
+    ]})
+    assert client.delete("/api/courses/101").status_code == 400
+    client.post("/api/timetable/reset")
+    assert client.delete("/api/courses/101").status_code == 200
+
+
+# --------------------------------- shifts ----------------------------------- #
+def test_shift_is_persisted_with_each_class(client):
+    payload = {"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+        {"day": 7, "start_time": "18:00", "end_time": "19:20", "room_id": 2,
+         "course_id": 103, "section": "A", "shift": "evening"},
+    ]}
+    assert client.post("/api/timetable", json=payload).status_code == 200
+    entries = client.get("/api/timetable").get_json()["entries"]
+    assert {e["shift"] for e in entries} == {"morning", "evening"}
+    assert max(e["day"] for e in entries) == 7          # full 7-day week supported
+
+
+def test_unknown_shift_falls_back_to_morning(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "nonsense"}
+    ]})
+    assert client.get("/api/timetable").get_json()["entries"][0]["shift"] == "morning"
+
+
+# -------------------------------- auto-fill ---------------------------------- #
+def test_autofill_places_sections_without_any_clash(client):
+    slots = [{"start": "08:30", "end": "09:50"}, {"start": "10:00", "end": "11:20"},
+             {"start": "11:30", "end": "12:50"}]
+    response = client.post("/api/timetable/autofill", json={
+        "assignments": [], "days": 5, "slots": slots,
+        "room_ids": [1, 2, 3, 4, 5, 6], "shift": "morning",
+    })
+    created = response.get_json()["created"]
+    assert len(created) == 45                                    # every section placed
+    assert all(c["shift"] == "morning" for c in created)
+
+    verdict = client.post("/api/timetable/validate", json={"assignments": created}).get_json()
+    assert verdict["ok"] is True, verdict.get("reports")
+
+
+def test_autofill_respects_what_is_already_placed(client):
+    existing = [{"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+                 "course_id": 101, "section": "A", "shift": "morning"}]
+    created = client.post("/api/timetable/autofill", json={
+        "assignments": existing, "days": 5,
+        "slots": [{"start": "08:30", "end": "09:50"}, {"start": "10:00", "end": "11:20"}],
+        "room_ids": [1, 2, 3, 4],
+    }).get_json()["created"]
+    assert not any(c["course_id"] == 101 and c["section"] == "A" for c in created)
+    combined = client.post("/api/timetable/validate", json={"assignments": existing + created}).get_json()
+    assert combined["ok"] is True
+
+
+def test_autofill_needs_a_grid(client):
+    assert client.post("/api/timetable/autofill", json={"days": 5, "slots": [], "room_ids": []}).status_code == 400
+
+
+# ------------------------------ Excel export --------------------------------- #
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_excel_export_has_one_sheet_per_day(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+        {"day": 6, "start_time": "18:00", "end_time": "19:20", "room_id": 2,
+         "course_id": 103, "section": "A", "shift": "evening"},
+    ]})
+    response = client.post("/api/export/xlsx", json={"days": 7, "shift": "all"})
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml"
+    )
+
+    import io as _io
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(_io.BytesIO(response.data))
+    assert workbook.sheetnames == [
+        "Summary", "Monday", "Tuesday", "Wednesday", "Thursday",
+        "Friday", "Saturday", "Sunday", "By Teacher",
+    ]
+    summary = workbook["Summary"]
+    assert [c.value for c in summary[1]][:4] == ["Day", "Shift", "Start", "End"]
+    assert summary.cell(row=2, column=1).value == "Monday"
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_excel_export_works_on_an_unsaved_grid(client):
+    response = client.post("/api/export/xlsx", json={
+        "days": 2,
+        "assignments": [{"day": 2, "start_time": "09:00", "end_time": "10:00", "room_id": 5,
+                         "course_id": 104, "section": "A", "shift": "morning"}],
+    })
+    assert response.status_code == 200
+    assert client.get("/api/timetable").get_json()["entries"] == []      # nothing was saved
+
+
+def test_excel_export_rejects_an_empty_timetable(client):
+    assert client.post("/api/export/xlsx", json={}).status_code == 400
+
+
+# ------------------------------- migrations ---------------------------------- #
+def test_migration_adds_columns_to_an_old_database(tmp_path):
+    """Simulate a v2.0 database and prove it upgrades in place."""
+    from sqlalchemy import create_engine, inspect, text
+
+    db_file = tmp_path / "old.db"
+    engine = create_engine(f"sqlite:///{db_file.as_posix()}")
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE courses (id INTEGER PRIMARY KEY, name VARCHAR(255) NOT NULL, "
+            "color VARCHAR(20) NOT NULL DEFAULT '#4c5caf', department VARCHAR(100) NOT NULL DEFAULT 'General')"
+        ))
+        conn.execute(text("INSERT INTO courses (id, name, department) VALUES (501, 'Legacy Course', 'Computer Science')"))
+    engine.dispose()
+
+    upgraded = init_database(f"sqlite:///{db_file.as_posix()}", seed=False)
+    columns = {c["name"] for c in inspect(upgraded).get_columns("courses")}
+    assert {"code", "credit_hours"} <= columns
+
+    with upgraded.connect() as conn:
+        code = conn.execute(text("SELECT code FROM courses WHERE id = 501")).scalar()
+    assert code                     # a code was back-filled, not left blank

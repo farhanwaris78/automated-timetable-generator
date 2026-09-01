@@ -39,9 +39,13 @@ hiddenimports = [
     "sqlalchemy.dialects.sqlite",
     "sqlite3",
     "dotenv",
+    "openpyxl",
+    "openpyxl.cell._writer",     # loaded lazily by openpyxl's writer
+    "et_xmlfile",
 ]
 # SQLAlchemy loads dialects dynamically -> PyInstaller cannot see them.
 hiddenimports += collect_submodules("sqlalchemy.dialects.sqlite")
+hiddenimports += collect_submodules("openpyxl")
 try:
     import pyodbc  # noqa: F401  (optional MSSQL support)
     hiddenimports += ["pyodbc"] + collect_submodules("sqlalchemy.dialects.mssql")

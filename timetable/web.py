@@ -10,17 +10,20 @@ Design rules applied here:
 
 from __future__ import annotations
 
+import io
 import logging
 import logging.handlers
 import os
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.exceptions import HTTPException
 
 from . import __version__
 from .config import Settings, bundle_dir, load_settings
+from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
+from .exporters import build_workbook, openpyxl_available
 from .services import Assignment, TimetableService, ValidationError, WEEKDAYS
 
 log = logging.getLogger("timetable")
@@ -82,9 +85,16 @@ def create_app(settings: Settings | None = None) -> Flask:
     app.extensions["engine"] = engine
     app.extensions["db_error"] = db_error
     app.extensions["service"] = TimetableService(engine) if engine is not None else None
+    app.extensions["catalog"] = CatalogService(engine) if engine is not None else None
 
     def service() -> TimetableService:
         svc = app.extensions.get("service")
+        if svc is None:
+            raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
+        return svc
+
+    def catalog() -> CatalogService:
+        svc = app.extensions.get("catalog")
         if svc is None:
             raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
         return svc
@@ -263,6 +273,144 @@ def create_app(settings: Settings | None = None) -> Flask:
             raise ValidationError("Settings must be an object")
         service().set_setting("grid", json.dumps(payload))
         return jsonify({"ok": True})
+
+
+    # ---- catalogue management (teachers / rooms / courses) ---------------- #
+    @app.get("/api/instructors")
+    def api_list_instructors():
+        return jsonify(catalog().list_instructors())
+
+    @app.post("/api/instructors")
+    def api_create_instructor():
+        payload = request.get_json(silent=True) or {}
+        return jsonify(catalog().save_instructor(payload)), 201
+
+    @app.put("/api/instructors/<int:instructor_id>")
+    def api_update_instructor(instructor_id: int):
+        payload = request.get_json(silent=True) or {}
+        return jsonify(catalog().save_instructor(payload, instructor_id))
+
+    @app.delete("/api/instructors/<int:instructor_id>")
+    def api_delete_instructor(instructor_id: int):
+        catalog().delete_instructor(instructor_id)
+        return jsonify({"ok": True})
+
+    @app.get("/api/buildings")
+    def api_list_buildings():
+        return jsonify(catalog().list_buildings())
+
+    @app.post("/api/buildings")
+    def api_create_building():
+        return jsonify(catalog().save_building(request.get_json(silent=True) or {})), 201
+
+    @app.delete("/api/buildings/<int:building_id>")
+    def api_delete_building(building_id: int):
+        catalog().delete_building(building_id)
+        return jsonify({"ok": True})
+
+    @app.post("/api/rooms")
+    def api_create_room():
+        return jsonify(catalog().save_room(request.get_json(silent=True) or {})), 201
+
+    @app.put("/api/rooms/<int:room_id>")
+    def api_update_room(room_id: int):
+        return jsonify(catalog().save_room(request.get_json(silent=True) or {}, room_id))
+
+    @app.delete("/api/rooms/<int:room_id>")
+    def api_delete_room(room_id: int):
+        catalog().delete_room(room_id)
+        return jsonify({"ok": True})
+
+    @app.get("/api/admin/courses")
+    def api_admin_courses():
+        return jsonify(catalog().list_courses_admin())
+
+    @app.post("/api/courses")
+    def api_create_course():
+        return jsonify(catalog().save_course(request.get_json(silent=True) or {})), 201
+
+    @app.put("/api/courses/<int:course_id>")
+    def api_update_course(course_id: int):
+        return jsonify(catalog().save_course(request.get_json(silent=True) or {}, course_id))
+
+    @app.delete("/api/courses/<int:course_id>")
+    def api_delete_course(course_id: int):
+        catalog().delete_course(course_id)
+        return jsonify({"ok": True})
+
+    @app.post("/api/courses/<int:course_id>/sections")
+    def api_create_section(course_id: int):
+        return jsonify(catalog().save_section(course_id, request.get_json(silent=True) or {})), 201
+
+    @app.delete("/api/courses/<int:course_id>/sections/<string:section>")
+    def api_delete_section(course_id: int, section: str):
+        catalog().delete_section(course_id, section)
+        return jsonify({"ok": True})
+
+    @app.post("/api/timetable/autofill")
+    def api_autofill():
+        payload = request.get_json(silent=True) or {}
+        existing = _parse_assignments(payload.get("assignments", []))
+        created = service().autofill(
+            existing,
+            days=int(payload.get("days") or 5),
+            slots=payload.get("slots") or [],
+            room_ids=[int(r) for r in (payload.get("room_ids") or [])],
+            shift=str(payload.get("shift") or "morning"),
+            limit=int(payload["limit"]) if payload.get("limit") else None,
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "created": [
+                    {
+                        "day": a.day,
+                        "start_time": a.start_time,
+                        "end_time": a.end_time,
+                        "room_id": a.room_id,
+                        "course_id": a.course_id,
+                        "section": a.section,
+                        "shift": a.shift,
+                    }
+                    for a in created
+                ],
+            }
+        )
+
+    # ---- exports ---------------------------------------------------------- #
+    @app.post("/api/export/xlsx")
+    def api_export_xlsx():
+        if not openpyxl_available():
+            return (
+                jsonify({"error": "missing_dependency", "message": "openpyxl is not installed; use CSV export."}),
+                501,
+            )
+        payload = request.get_json(silent=True) or {}
+        assignments = _parse_assignments(payload.get("assignments", []))
+        svc = service()
+
+        if assignments:
+            entries = svc.describe_assignments(assignments)
+        else:
+            entries = svc.load_timetable()
+        if not entries:
+            raise ValidationError("There is nothing to export yet.")
+
+        workbook = build_workbook(
+            entries,
+            svc.list_rooms(),
+            days=int(payload.get("days") or max(int(e["day"]) for e in entries)),
+            slots=payload.get("slots") or None,
+            shift=str(payload.get("shift") or "all"),
+            title=str(payload.get("title") or "University Timetable"),
+        )
+        return send_file(
+            io.BytesIO(workbook),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=str(payload.get("filename") or "timetable.xlsx"),
+            max_age=0,
+        )
 
     # ---- legacy routes (kept so old bookmarks/scripts keep working) -------- #
     @app.post("/save-timetable")

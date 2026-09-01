@@ -42,10 +42,12 @@ metadata = MetaData()
 courses = Table(
     "courses",
     metadata,
-    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("code", String(24), nullable=False, server_default=""),
     Column("name", String(255), nullable=False),
     Column("color", String(20), nullable=False, server_default="#4c5caf"),
     Column("department", String(100), nullable=False, server_default="General"),
+    Column("credit_hours", Integer, nullable=False, server_default="3"),
 )
 
 course_sections = Table(
@@ -58,8 +60,11 @@ course_sections = Table(
 instructors = Table(
     "instructors",
     metadata,
-    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", String(255), nullable=False),
+    Column("email", String(150), nullable=False, server_default=""),
+    Column("department", String(100), nullable=False, server_default="General"),
+    Column("shift", String(16), nullable=False, server_default="both"),   # morning | evening | both
 )
 
 courses_taught_by = Table(
@@ -78,17 +83,19 @@ courses_taught_by = Table(
 buildings = Table(
     "buildings",
     metadata,
-    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", String(255), nullable=False),
 )
 
 rooms = Table(
     "rooms",
     metadata,
-    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("id", Integer, primary_key=True, autoincrement=True),
     Column("room_number", String(20), nullable=False),
     Column("building_id", Integer, ForeignKey("buildings.id", ondelete="CASCADE"), nullable=False),
     Column("capacity", Integer, nullable=False, server_default="60"),
+    Column("room_type", String(20), nullable=False, server_default="Classroom"),  # Classroom | Lab | Hall
+
     UniqueConstraint("building_id", "room_number", name="uq_room_per_building"),
 )
 
@@ -134,6 +141,7 @@ timetable_entries = Table(
     Column("room_id", Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False),
     Column("course_id", Integer, nullable=False),
     Column("section", String(8), nullable=False),
+    Column("shift", String(16), nullable=False, server_default="morning"),
     Column("created_at", String(32), nullable=False, server_default=""),
     CheckConstraint("day >= 1 AND day <= 7", name="ck_day_range"),
     UniqueConstraint("day", "start_time", "room_id", name="uq_room_slot"),
@@ -258,6 +266,64 @@ def seed_if_empty(engine: Engine, *, force: bool = False) -> bool:
     return True
 
 
+_MIGRATIONS: dict[str, dict[str, str]] = {
+    # table -> column -> DDL fragment used when the column has to be added
+    "courses": {
+        "code": "VARCHAR(24) NOT NULL DEFAULT ''",
+        "credit_hours": "INTEGER NOT NULL DEFAULT 3",
+    },
+    "instructors": {
+        "email": "VARCHAR(150) NOT NULL DEFAULT ''",
+        "department": "VARCHAR(100) NOT NULL DEFAULT 'General'",
+        "shift": "VARCHAR(16) NOT NULL DEFAULT 'both'",
+    },
+    "rooms": {
+        "room_type": "VARCHAR(20) NOT NULL DEFAULT 'Classroom'",
+    },
+    "timetable_entries": {
+        "shift": "VARCHAR(16) NOT NULL DEFAULT 'morning'",
+    },
+}
+
+
+def migrate(engine: Engine) -> list[str]:
+    """Add columns introduced after a user's database was first created.
+
+    Deliberately tiny: this app ships to non-technical users who must never be
+    asked to run a migration tool.  Only additive changes are supported, which
+    is all the schema has ever needed.
+    """
+    applied: list[str] = []
+    inspector = inspect(engine)
+    for table_name, columns in _MIGRATIONS.items():
+        if not inspector.has_table(table_name):
+            continue
+        present = {c["name"] for c in inspector.get_columns(table_name)}
+        for column, ddl in columns.items():
+            if column in present:
+                continue
+            with engine.begin() as conn:
+                conn.exec_driver_sql(f"ALTER TABLE {table_name} ADD COLUMN {column} {ddl}")
+            applied.append(f"{table_name}.{column}")
+    if applied:
+        log.info("Database upgraded: added %s", ", ".join(applied))
+        _backfill_course_codes(engine)
+    return applied
+
+
+def _backfill_course_codes(engine: Engine) -> None:
+    """Give pre-existing courses a sensible code (CS-101, MT-204, ...)."""
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(courses.c.id, courses.c.name, courses.c.department).where(
+                (courses.c.code == "") | (courses.c.code.is_(None))
+            )
+        ).all()
+        for row in rows:
+            prefix = "".join(word[0] for word in str(row.department or "GE").split()[:2]).upper() or "GE"
+            conn.execute(courses.update().where(courses.c.id == row.id).values(code=f"{prefix}-{row.id}"))
+
+
 def init_database(database_url: str, *, seed: bool = True) -> Engine:
     """Create the engine, ensure the schema exists and seed on first run."""
     try:
@@ -268,6 +334,10 @@ def init_database(database_url: str, *, seed: bool = True) -> Engine:
         raise DatabaseError(str(exc)) from exc
 
     metadata.create_all(engine, checkfirst=True)
+    try:
+        migrate(engine)
+    except Exception as exc:  # noqa: BLE001 - never block start-up on a migration
+        log.warning("Schema upgrade skipped: %s", exc)
 
     if seed:
         try:

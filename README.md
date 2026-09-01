@@ -37,7 +37,19 @@ app. That's the whole installation.
 
 ## ✨ What it does
 
+* **Manage everything in the app** — add/edit/delete **teachers**, **classrooms**
+  (with capacity and type), **courses with course codes**, credit hours and
+  **sections**, each with its own keyboard shortcut. No SQL, no spreadsheets.
+* **Morning & evening shifts** with independent hours, sharing the same rooms
+  and staff; clash detection spans both.
+* **Full 1–7 day week.**
 * **Drag & drop scheduling** on a room × time grid, one tab per day.
+* **Undo / redo** (100 steps) for every action — <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.
+* **Auto-fill** places every remaining section in a conflict-free slot.
+* **Excel export with one worksheet per day**, colour-coded, plus Summary and
+  By-Teacher sheets.
+* **Discoverable shortcuts** — <kbd>F1</kbd> shows a live list generated from the
+  same registry that handles the keys, and every button's tooltip shows its key.
 * **Real clash detection, server-side, on every drop:**
   * 🔴 **room** double-booking (overlapping, not just identical, slots)
   * 🔴 **instructor** teaching two sections at once
@@ -47,7 +59,7 @@ app. That's the whole installation.
 * **Class details on click** — instructor, department, headcount, full roster.
 * **Save & restore** the whole week atomically; nothing is written while a
   clash remains.
-* **Export** to PDF (one page per day), CSV, or print.
+* **Export** to Excel (per-day sheets), PDF (one page per day), CSV, or print.
 * **Search & filter** the catalogue, restrict to a building, cap the room count.
 * **Zero configuration** — an embedded SQLite database is created on first run
   and seeded with a realistic sample dataset (18 courses · 45 sections ·
@@ -78,7 +90,7 @@ Run the tests:
 
 ```bash
 pip install pytest
-python -m pytest -q                # 35 tests
+python -m pytest -q                # 56 tests
 ```
 
 ---
@@ -104,19 +116,33 @@ run.py / app.py             developer + WSGI entry points
 timetable/
 ├── config.py               env/.env handling, per-OS data dir, DB URL resolution
 ├── db.py                   SQLAlchemy schema, engine, first-run seeding
-├── services.py             domain logic + the clash-detection engine
+├── services.py             domain logic, clash-detection engine, auto-fill
+├── catalog.py              CRUD for teachers, rooms, courses, sections
+├── exporters.py            Excel workbook builder (one sheet per day)
 ├── web.py                  Flask app factory and JSON API
 ├── desktop.py              port picking, waitress server, browser launch
 ├── seed_data.json          sample dataset
 ├── templates/index.html
 └── static/                 style.css · app.js · favicon.svg · vendor/html2pdf
 packaging/                  build.py · timetable.spec · cx_setup.py · icons
-tests/test_app.py           35 tests
+tests/test_app.py           56 tests
 docs/                       USER_GUIDE · BUILD · SCHEMA · BUGS_AND_FIXES
 ```
 
 **Stack:** Python 3.10+ · Flask 3 · SQLAlchemy 2 · waitress · SQLite ·
-vanilla ES2017 front-end (no jQuery, no CDN — it must work offline).
+openpyxl · vanilla ES2017 front-end (no jQuery, no CDN — it must work offline).
+
+### Keyboard shortcuts
+
+Press <kbd>F1</kbd> in the app. Add data: <kbd>Alt+T</kbd> teacher ·
+<kbd>Alt+R</kbd> room · <kbd>Alt+C</kbd> course · <kbd>Alt+B</kbd> building ·
+<kbd>Alt+S</kbd> section · <kbd>Alt+M</kbd> manage. Edit: <kbd>Ctrl+Z</kbd> /
+<kbd>Ctrl+Y</kbd> · <kbd>Delete</kbd>. Timetable: <kbd>Ctrl+G</kbd> generate ·
+<kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> load · <kbd>Ctrl+K</kbd> check ·
+<kbd>Ctrl+Shift+A</kbd> auto-fill. Export: <kbd>Ctrl+E</kbd> Excel ·
+<kbd>Alt+P</kbd> PDF · <kbd>Alt+V</kbd> CSV · <kbd>Ctrl+P</kbd> print.
+View: <kbd>Alt+1</kbd>/<kbd>Alt+2</kbd> shift · <kbd>1</kbd>–<kbd>7</kbd> day ·
+<kbd>Ctrl+F</kbd> search.
 
 ### API
 
@@ -130,6 +156,14 @@ vanilla ES2017 front-end (no jQuery, no CDN — it must work offline).
 | `POST` | `/api/timetable/validate` | check one placement or the whole grid |
 | `POST` | `/api/timetable` | save (atomic, rejects clashes with `409`) |
 | `POST` | `/api/timetable/reset` · `/api/database/reset` | clear / factory reset |
+| `POST` | `/api/timetable/autofill` | fill the remaining sections automatically |
+| `POST` | `/api/export/xlsx` | Excel workbook, one sheet per day |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/instructors[/<id>]` | teachers |
+| `GET`/`POST`/`DELETE` | `/api/buildings[/<id>]` | buildings |
+| `POST`/`PUT`/`DELETE` | `/api/rooms[/<id>]` | classrooms |
+| `GET` | `/api/admin/courses` | courses with their sections and teachers |
+| `POST`/`PUT`/`DELETE` | `/api/courses[/<id>]` | courses and course codes |
+| `POST`/`DELETE` | `/api/courses/<id>/sections[/<section>]` | sections |
 | `GET`/`POST` | `/api/settings` | grid preferences |
 
 ---
@@ -167,11 +201,13 @@ detection compared a cell with itself so it never found anything.
 
 ## 🗺 Roadmap
 
-* Admin screens for courses, instructors, rooms and enrolments
-* Automatic section splitting and batch-based scheduling
-* 3-hour lab sessions spanning multiple slots
-* Constraint-solver auto-fill ("schedule the rest for me")
-* Multi-campus support and per-user logins
+* Student enrolment editor + Excel/CSV **import** for bulk setup
+* Teacher availability windows ("Dr. X cannot teach before 11:00")
+* Lab sessions spanning several consecutive slots
+* Per-teacher and per-section timetable views and printouts
+* Optimising solver (minimise gaps, balance daily load) on top of auto-fill
+* Multi-campus support, per-user logins and an audit trail
+* Automatic backups of `timetable.db` with one-click restore
 
 ---
 

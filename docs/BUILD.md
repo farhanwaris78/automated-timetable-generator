@@ -39,10 +39,21 @@ python packaging/build.py --help
 | `python packaging/build.py dmg` | macOS disk image (macOS only) |
 | `python packaging/build.py deb` | Debian/Ubuntu package (Linux only) |
 | `python packaging/build.py portable` | zip / tar.gz with the binary + docs |
+| `python packaging/build.py exe --engine cxfreeze` | use cx_Freeze instead of PyInstaller |
 
 The script runs the test suite first, cleans `build/` and `dist/`, builds, then
 **smoke-tests the frozen binary** (`--version`) so a broken bundle can never be
 shipped.
+
+### Two freezer engines, so a build never dead-ends
+
+`--engine auto` (the default) uses **PyInstaller** for a single-file
+executable. If this Python was built without a shared `libpython` — common on
+Debian-slim, Alpine and some CI images, and the one thing that stopped the
+build in the original container — it automatically falls back to **cx_Freeze**,
+which produces a folder containing the binary plus its libraries. `portable`,
+`deb` and `dmg` all understand both layouts, so every downstream artifact still
+builds. Force one with `--engine pyinstaller` or `--engine cxfreeze`.
 
 ---
 
@@ -63,8 +74,8 @@ Output in `dist\`:
 | File | What it is |
 |---|---|
 | `TimetableGenerator.exe` | ~25 MB single file. Double-click → browser opens. |
-| `TimetableGenerator-2.0.0-windows-x64.zip` | portable: exe + README + `.env.example` + a `.bat` launcher |
-| `AutomatedTimetableGenerator-2.0.0-win64.msi` | proper installer: Program Files, Start-Menu shortcut, entry in *Apps & features*, clean upgrades |
+| `TimetableGenerator-2.1.0-windows-x64.zip` | portable: exe + README + `.env.example` + a `.bat` launcher |
+| `AutomatedTimetableGenerator-2.1.0-win64.msi` | proper installer: Program Files, Start-Menu shortcut, entry in *Apps & features*, clean upgrades |
 
 **Things worth knowing**
 
@@ -84,8 +95,8 @@ Output in `dist\`:
   version 2.1 replace version 2.0 instead of installing beside it.
 * Silent install for a computer lab:
   ```powershell
-  msiexec /i AutomatedTimetableGenerator-2.0.0-win64.msi /qn /norestart
-  msiexec /x  AutomatedTimetableGenerator-2.0.0-win64.msi /qn        # uninstall
+  msiexec /i AutomatedTimetableGenerator-2.1.0-win64.msi /qn /norestart
+  msiexec /x  AutomatedTimetableGenerator-2.1.0-win64.msi /qn        # uninstall
   ```
 
 ---
@@ -101,7 +112,7 @@ python packaging/make_icons.py            # creates icon.icns on macOS
 python packaging/build.py exe portable dmg
 ```
 
-Output: `dist/TimetableGenerator.app`, `dist/TimetableGenerator-2.0.0-macos-arm64.dmg`.
+Output: `dist/TimetableGenerator.app`, `dist/TimetableGenerator-2.1.0-macos-arm64.dmg`.
 
 * The build script applies an **ad-hoc signature** (`codesign --sign -`),
   without which Apple Silicon refuses to launch the app ("is damaged and can't
@@ -113,9 +124,9 @@ Output: `dist/TimetableGenerator.app`, `dist/TimetableGenerator-2.0.0-macos-arm6
   To remove that step, notarise:
   ```bash
   codesign --deep --force --options runtime --sign "Developer ID Application: NAME (TEAMID)" dist/TimetableGenerator.app
-  xcrun notarytool submit dist/TimetableGenerator-2.0.0-macos-arm64.dmg \
+  xcrun notarytool submit dist/TimetableGenerator-2.1.0-macos-arm64.dmg \
         --apple-id you@example.com --team-id TEAMID --password APP-SPECIFIC-PW --wait
-  xcrun stapler staple dist/TimetableGenerator-2.0.0-macos-arm64.dmg
+  xcrun stapler staple dist/TimetableGenerator-2.1.0-macos-arm64.dmg
   ```
 
 ---
@@ -136,8 +147,8 @@ Output:
 | File | Install |
 |---|---|
 | `TimetableGenerator` | `./TimetableGenerator` |
-| `TimetableGenerator-2.0.0-linux-x86_64.tar.gz` | extract, run `./start.sh` |
-| `timetable-generator_2.0.0_amd64.deb` | `sudo apt install ./timetable-generator_2.0.0_amd64.deb` |
+| `TimetableGenerator-2.1.0-linux-x86_64.tar.gz` | extract, run `./start.sh` |
+| `timetable-generator_2.1.0_amd64.deb` | `sudo apt install ./timetable-generator_2.1.0_amd64.deb` |
 
 The `.deb` installs the binary to `/usr/bin/timetable-generator`, a desktop
 entry and the icon, so the app appears in the application menu.
@@ -162,7 +173,7 @@ printf '#!/bin/sh\nexec "$(dirname "$0")/usr/bin/TimetableGenerator" "$@"\n' > A
 chmod +x AppDir/AppRun
 wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
 chmod +x appimagetool-x86_64.AppImage
-./appimagetool-x86_64.AppImage AppDir dist/TimetableGenerator-2.0.0-x86_64.AppImage
+./appimagetool-x86_64.AppImage AppDir dist/TimetableGenerator-2.1.0-x86_64.AppImage
 ```
 
 ---
@@ -214,8 +225,8 @@ gh run download            # pulls every artifact into the current folder
 **To cut a public release** (attaches all installers to a GitHub Release):
 
 ```bash
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 ---
@@ -248,7 +259,9 @@ flag and the UI footer all read it from there.
 |---|---|
 | `python -m pytest -q` | ✅ 35 passed |
 | App boots, serves the UI, saves and reloads a timetable | ✅ |
-| **Frozen** build (cx_Freeze `build_exe`) starts, finds its bundled templates/static/seed data, creates the database in the user data folder and saves a class | ✅ verified on Linux |
-| `TimetableGenerator --version` on the frozen binary | ✅ `Automated Timetable Generator 2.0.0` |
-| PyInstaller one-file build | ⚠️ not runnable in this container: Debian-slim's Python has no `libpython3.11.so` and the container cannot download a standalone Python. The spec is correct — run it on your machine or in CI (§5). |
+| `python packaging/build.py exe portable` end-to-end | ✅ produced `dist/TimetableGenerator/` + `TimetableGenerator-2.1.0-linux-x86_64.tar.gz` (16 MB) |
+| `python packaging/build.py deb` | ✅ produced `timetable-generator_2.1.0_amd64.deb` (12 MB), installs to `/opt` with a `/usr/bin` launcher, desktop entry and icon |
+| Frozen binary serves the UI, migrates/creates its database, saves a timetable, adds a teacher and **exports a 9-sheet .xlsx** | ✅ verified |
+| `TimetableGenerator --version` on the frozen binary | ✅ `Automated Timetable Generator 2.1.0` |
+| PyInstaller one-file build | ⚠️ not runnable in this container (Debian-slim Python has no `libpython3.11.so`, and downloading a standalone Python is blocked). The spec is correct; `--engine auto` detected this and used cx_Freeze instead. On Windows/macOS/CI, PyInstaller is used and gives a true single file. |
 | `.msi` / `.dmg` | must be produced on Windows / macOS respectively (§1, §2) |

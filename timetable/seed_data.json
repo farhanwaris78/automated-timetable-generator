@@ -2,111 +2,147 @@
  "courses": [
   {
    "id": 101,
+   "code": "CS4045",
    "name": "MLOps",
    "color": "#A9D2E1",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 102,
+   "code": "CS3002",
    "name": "Network Security",
    "color": "#C1D8E7",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 103,
+   "code": "CS4001",
    "name": "Machine Learning",
    "color": "#8C9FB2",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 104,
+   "code": "CS3001",
    "name": "Web Development",
    "color": "#ADC4D6",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 105,
+   "code": "CS2005",
    "name": "Database Management",
    "color": "#9CA8B9",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 4
   },
   {
    "id": 106,
+   "code": "CS4062",
    "name": "Cybersecurity",
    "color": "#ADC4D6",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 107,
+   "code": "CS3009",
    "name": "Artificial Intelligence",
    "color": "#8C9FB2",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 108,
+   "code": "CS4092",
    "name": "Cloud Computing",
    "color": "#C1D8E7",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 109,
+   "code": "CS3006",
    "name": "Human-Computer Interaction",
    "color": "#ADC4D6",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 110,
+   "code": "SE3004",
    "name": "Software Testing",
    "color": "#9CA8B9",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 111,
+   "code": "CS4033",
    "name": "Mobile App Development",
    "color": "#A9D2E1",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 112,
+   "code": "EE4021",
    "name": "Robotics",
    "color": "#C1D8E7",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 113,
+   "code": "DS4011",
    "name": "Data Warehousing",
    "color": "#8C9FB2",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 114,
+   "code": "CS4055",
    "name": "Game Development",
    "color": "#C1D8E7",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 115,
+   "code": "CS4073",
    "name": "IoT Programming",
    "color": "#9CA8B9",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 116,
+   "code": "CS3061",
    "name": "E-commerce Technologies",
    "color": "#A9D2E1",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 117,
+   "code": "DS4001",
    "name": "Big Data Analytics",
    "color": "#C1D8E7",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 3
   },
   {
    "id": 118,
+   "code": "EE3005",
    "name": "Embedded Systems",
    "color": "#9CA8B9",
-   "department": "Computer Science"
+   "department": "Computer Science",
+   "credit_hours": 4
   }
  ],
  "course_sections": [
@@ -294,111 +330,192 @@
  "instructors": [
   {
    "id": 111,
-   "name": "Dr. Hammad Majeed"
+   "name": "Dr. Hammad Majeed",
+   "email": "hmajeed@university.edu",
+   "department": "Computer Science",
+   "shift": "evening"
   },
   {
    "id": 211,
-   "name": "Dr. Kashif Munir"
+   "name": "Dr. Kashif Munir",
+   "email": "kmunir@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 322,
-   "name": "Dr. Aftab Ahmed Maroof"
+   "name": "Dr. Aftab Ahmed Maroof",
+   "email": "amaroof@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 433,
-   "name": "Dr. Muhammad Aleem"
+   "name": "Dr. Muhammad Aleem",
+   "email": "maleem@university.edu",
+   "department": "Computer Science",
+   "shift": "both"
   },
   {
    "id": 523,
-   "name": "Dr. Muhammad Arshad Islam"
+   "name": "Dr. Muhammad Arshad Islam",
+   "email": "mislam@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 612,
-   "name": "Dr. Ahmad Raza Shahid"
+   "name": "Dr. Ahmad Raza Shahid",
+   "email": "ashahid@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 765,
-   "name": "Dr. Ejaz Ahmed"
+   "name": "Dr. Ejaz Ahmed",
+   "email": "eahmed@university.edu",
+   "department": "Computer Science",
+   "shift": "both"
   },
   {
    "id": 834,
-   "name": "Dr. Noreen Jamil"
+   "name": "Dr. Noreen Jamil",
+   "email": "njamil@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 936,
-   "name": "Dr. Labiba Fahad"
+   "name": "Dr. Labiba Fahad",
+   "email": "lfahad@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 109,
-   "name": "Dr. Akhtar Jamil"
+   "name": "Dr. Akhtar Jamil",
+   "email": "ajamil@university.edu",
+   "department": "Computer Science",
+   "shift": "both"
   },
   {
    "id": 113,
-   "name": "Dr. Imran Ashraf"
+   "name": "Dr. Imran Ashraf",
+   "email": "iashraf@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 128,
-   "name": "Dr. Amna Basharat"
+   "name": "Dr. Amna Basharat",
+   "email": "abasharat@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 139,
-   "name": "Dr. Adnan Tariq"
+   "name": "Dr. Adnan Tariq",
+   "email": "atariq@university.edu",
+   "department": "Computer Science",
+   "shift": "both"
   },
   {
    "id": 145,
-   "name": "Dr. Faisal Cheema"
+   "name": "Dr. Faisal Cheema",
+   "email": "fcheema@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 156,
-   "name": "Dr. Mehreen Alam"
+   "name": "Dr. Mehreen Alam",
+   "email": "malam@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 163,
-   "name": "Ms. Noor ul Ain"
+   "name": "Ms. Noor ul Ain",
+   "email": "nain@university.edu",
+   "department": "Computer Science",
+   "shift": "evening"
   },
   {
    "id": 172,
-   "name": "Ms. Sidra Khalid"
+   "name": "Ms. Sidra Khalid",
+   "email": "skhalid@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 189,
-   "name": "Mr. Shams Farooq"
+   "name": "Mr. Shams Farooq",
+   "email": "sfarooq@university.edu",
+   "department": "Computer Science",
+   "shift": "morning"
   },
   {
    "id": 190,
-   "name": "Ms. Ifrah Qaiser"
+   "name": "Ms. Ifrah Qaiser",
+   "email": "iqaiser@university.edu",
+   "department": "Software Engineering",
+   "shift": "both"
   },
   {
    "id": 204,
-   "name": "Mr. Shehreyar Rashid"
+   "name": "Mr. Shehreyar Rashid",
+   "email": "srashid@university.edu",
+   "department": "Software Engineering",
+   "shift": "morning"
   },
   {
    "id": 216,
-   "name": "Mr. Shoaib Mehboob"
+   "name": "Mr. Shoaib Mehboob",
+   "email": "smehboob@university.edu",
+   "department": "Software Engineering",
+   "shift": "morning"
   },
   {
    "id": 228,
-   "name": "Mr. Saad Salman"
+   "name": "Mr. Saad Salman",
+   "email": "ssalman@university.edu",
+   "department": "Software Engineering",
+   "shift": "both"
   },
   {
    "id": 239,
-   "name": "Mr. Rohail Gulbaz"
+   "name": "Mr. Rohail Gulbaz",
+   "email": "rgulbaz@university.edu",
+   "department": "Software Engineering",
+   "shift": "morning"
   },
   {
    "id": 243,
-   "name": "Mr. Owais Idrees"
+   "name": "Mr. Owais Idrees",
+   "email": "oidrees@university.edu",
+   "department": "Electrical Engineering",
+   "shift": "morning"
   },
   {
    "id": 254,
-   "name": "Ms. Marium Hida"
+   "name": "Ms. Marium Hida",
+   "email": "mhida@university.edu",
+   "department": "Electrical Engineering",
+   "shift": "both"
   },
   {
    "id": 265,
-   "name": "Mr. Majid Hussain"
+   "name": "Mr. Majid Hussain",
+   "email": "mhussain@university.edu",
+   "department": "Electrical Engineering",
+   "shift": "morning"
   },
   {
    "id": 277,
-   "name": "Mr. Muhammad Almas Khan"
+   "name": "Mr. Muhammad Almas Khan",
+   "email": "mkhan@university.edu",
+   "department": "Electrical Engineering",
+   "shift": "morning"
   }
  ],
  "courses_taught_by": [
@@ -647,217 +764,253 @@
    "id": 1,
    "room_number": "108",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 2,
    "room_number": "211",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 3,
    "room_number": "301",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 40,
+   "room_type": "Lab"
   },
   {
    "id": 4,
    "room_number": "302",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 5,
    "room_number": "303",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 6,
    "room_number": "305",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 7,
    "room_number": "310",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 8,
    "room_number": "311",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 9,
    "room_number": "314",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 10,
    "room_number": "315",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 40,
+   "room_type": "Lab"
   },
   {
    "id": 11,
    "room_number": "316",
    "building_id": 1,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 12,
    "room_number": "130",
    "building_id": 2,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 13,
    "room_number": "227",
    "building_id": 2,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 14,
    "room_number": "229",
    "building_id": 2,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 15,
    "room_number": "230",
    "building_id": 2,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 16,
    "room_number": "110",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 120,
+   "room_type": "Hall"
   },
   {
    "id": 17,
    "room_number": "301",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 40,
+   "room_type": "Lab"
   },
   {
    "id": 18,
    "room_number": "302",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 19,
    "room_number": "303",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 20,
    "room_number": "304",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 21,
    "room_number": "305",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 22,
    "room_number": "307",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 23,
    "room_number": "308",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 40,
+   "room_type": "Lab"
   },
   {
    "id": 24,
    "room_number": "309",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 25,
    "room_number": "310",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 26,
    "room_number": "311",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 27,
    "room_number": "401",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 28,
    "room_number": "402",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 29,
    "room_number": "403",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 30,
    "room_number": "404",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 31,
    "room_number": "405",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 32,
    "room_number": "406",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 40,
+   "room_type": "Lab"
   },
   {
    "id": 33,
    "room_number": "407",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 120,
+   "room_type": "Hall"
   },
   {
    "id": 34,
    "room_number": "408",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 35,
    "room_number": "409",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   },
   {
    "id": 36,
    "room_number": "410",
    "building_id": 3,
-   "capacity": 60
+   "capacity": 60,
+   "room_type": "Classroom"
   }
  ],
  "students": [

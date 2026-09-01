@@ -4,11 +4,11 @@
 
 | Platform | File | How |
 |---|---|---|
-| Windows 10/11 | `AutomatedTimetableGenerator-2.0.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
-| Windows (no admin rights) | `TimetableGenerator-2.0.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
-| macOS | `TimetableGenerator-2.0.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
-| Ubuntu/Debian | `timetable-generator_2.0.0_amd64.deb` | `sudo apt install ./timetable-generator_2.0.0_amd64.deb` |
-| Any Linux | `TimetableGenerator-2.0.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
+| Windows 10/11 | `AutomatedTimetableGenerator-2.1.0-win64.msi` | Double-click → Next → Install. Launch from the Start menu. |
+| Windows (no admin rights) | `TimetableGenerator-2.1.0-windows-x64.zip` | Extract anywhere, double-click `TimetableGenerator.exe`. |
+| macOS | `TimetableGenerator-2.1.0-macos-*.dmg` | Open the DMG, drag the app to *Applications*. First launch: right-click → **Open**. |
+| Ubuntu/Debian | `timetable-generator_2.1.0_amd64.deb` | `sudo apt install ./timetable-generator_2.1.0_amd64.deb` |
+| Any Linux | `TimetableGenerator-2.1.0-linux-x86_64.tar.gz` | Extract and run `./start.sh` |
 
 Nothing else is required — no Python, no SQL Server, no ODBC driver, no
 internet connection.
@@ -36,6 +36,48 @@ default browser opens automatically. **Closing that window stops the app.**
 ```
 
 ---
+
+## Managing your own data
+
+The sample dataset is only a starting point. Everything is editable inside the
+app — no SQL, no spreadsheets:
+
+| What | How |
+|---|---|
+| **Teachers** | <kbd>Alt</kbd>+<kbd>T</kbd> or *+ Teacher*. Name, email, department and which shift they teach. |
+| **Classrooms** | <kbd>Alt</kbd>+<kbd>R</kbd> or *+ Room*. Number, building, capacity and type (Classroom / Lab / Hall). Typing a new building name creates it. |
+| **Buildings** | <kbd>Alt</kbd>+<kbd>B</kbd> |
+| **Courses & course codes** | <kbd>Alt</kbd>+<kbd>C</kbd> or *+ Course*. Code (e.g. `CS3009`), title, department, credit hours, colour and a comma-separated list of sections with their teacher. |
+| **Sections** | <kbd>Alt</kbd>+<kbd>S</kbd>, or from the course row in *Manage data*. |
+| **Everything at once** | <kbd>Alt</kbd>+<kbd>M</kbd> opens *Manage data* with searchable Teachers / Classrooms / Courses tables — edit or delete any row. |
+
+The app refuses destructive edits that would corrupt a schedule: you cannot
+delete a teacher who still has sections, a room or course used by the saved
+timetable, or a building that still contains rooms. It tells you exactly what
+to fix first.
+
+## Morning and evening shifts
+
+Each shift keeps **its own hours** (default 08:30–13:00 and 13:30–19:00) but
+shares the same rooms, teachers and courses. Switch with <kbd>Alt</kbd>+<kbd>1</kbd> /
+<kbd>Alt</kbd>+<kbd>2</kbd> or the segmented control. Clash detection runs across
+**both** shifts — a teacher scheduled at 12:30 in the morning shift cannot also
+be at 12:30 in the evening shift — and one Save stores the complete day.
+
+## Undo / redo
+
+Every placement, move, deletion, auto-fill and grid clear can be undone with
+<kbd>Ctrl</kbd>+<kbd>Z</kbd> and re-applied with <kbd>Ctrl</kbd>+<kbd>Y</kbd>
+(100 steps of history). The ↶ / ↷ buttons on the toolbar do the same and grey
+out when there is nothing to undo.
+
+## Auto-fill
+
+*Auto-fill remaining* (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>) places every
+still-unscheduled section into the first slot where it causes no room, teacher,
+student or capacity conflict — largest classes first. On the bundled dataset it
+schedules all 45 sections in well under a second. Review the result, adjust by
+hand, then save.
 
 ## Step by step
 
@@ -67,14 +109,66 @@ default browser opens automatically. **Closing that window stops the app.**
    If anything still clashes, nothing is saved and the offending cells turn red.
 9. **Load saved** restores the stored week (grid settings included) next time
    you open the app.
-10. **Export**: PDF (one page per day, A3 landscape), CSV (for Excel), or Print.
+10. **Export**:
+    * **Excel** (<kbd>Ctrl</kbd>+<kbd>E</kbd>) — **one worksheet per day**, colour-coded exactly like the
+      screen, plus a filterable **Summary** sheet and a **By Teacher** sheet. Both shifts are included.
+    * **PDF** (<kbd>Alt</kbd>+<kbd>P</kbd>) — one page per day, A3 landscape.
+    * **CSV** (<kbd>Alt</kbd>+<kbd>V</kbd>) and **Print** (<kbd>Ctrl</kbd>+<kbd>P</kbd>).
 
 ### Keyboard shortcuts
 
+Press <kbd>F1</kbd> in the app for this same list — it is generated from the
+code, so it can never go out of date. Shortcuts are ignored while you type in
+a text box.
+
+**Add data**
+
 | Key | Action |
 |---|---|
-| <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> | Save to database |
+| <kbd>Alt</kbd>+<kbd>T</kbd> | Add teacher |
+| <kbd>Alt</kbd>+<kbd>R</kbd> | Add classroom |
+| <kbd>Alt</kbd>+<kbd>C</kbd> | Add course (with its code) |
+| <kbd>Alt</kbd>+<kbd>B</kbd> | Add building |
+| <kbd>Alt</kbd>+<kbd>S</kbd> | Add a section to a course |
+| <kbd>Alt</kbd>+<kbd>M</kbd> | Manage teachers / classrooms / courses |
+
+**Edit**
+
+| Key | Action |
+|---|---|
+| <kbd>Ctrl</kbd>+<kbd>Z</kbd> | Undo |
+| <kbd>Ctrl</kbd>+<kbd>Y</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>) | Redo |
 | <kbd>Delete</kbd> | Remove the selected class |
+| <kbd>Ctrl</kbd>+<kbd>Backspace</kbd> | Clear the whole grid |
+
+**Timetable**
+
+| Key | Action |
+|---|---|
+| <kbd>Ctrl</kbd>+<kbd>G</kbd> | Generate the grid |
+| <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save to database |
+| <kbd>Ctrl</kbd>+<kbd>O</kbd> | Load the saved timetable |
+| <kbd>Ctrl</kbd>+<kbd>K</kbd> | Check every clash |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> | Auto-fill the remaining sections |
+
+**Export**
+
+| Key | Action |
+|---|---|
+| <kbd>Ctrl</kbd>+<kbd>E</kbd> | Export to Excel (one sheet per day) |
+| <kbd>Alt</kbd>+<kbd>P</kbd> | Export to PDF |
+| <kbd>Alt</kbd>+<kbd>V</kbd> | Export to CSV |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print |
+
+**View**
+
+| Key | Action |
+|---|---|
+| <kbd>Alt</kbd>+<kbd>1</kbd> / <kbd>Alt</kbd>+<kbd>2</kbd> | Morning / Evening shift |
+| <kbd>1</kbd> … <kbd>7</kbd> | Jump to Monday … Sunday |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | Search the course list |
+| <kbd>Alt</kbd>+<kbd>H</kbd> | Show / hide the course panel |
+| <kbd>F1</kbd> | This shortcut list |
 | <kbd>Esc</kbd> | Close a dialog |
 
 ---

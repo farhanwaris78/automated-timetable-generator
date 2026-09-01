@@ -24,6 +24,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tarfile
 import zipfile
 from pathlib import Path
@@ -75,12 +76,32 @@ def clean() -> None:
     DIST.mkdir(parents=True, exist_ok=True)
 
 
+def shared_python_available() -> bool:
+    """PyInstaller needs libpythonX.Y.so; some slim distros ship without it."""
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return True
+    return bool(sysconfig.get_config_var("Py_ENABLE_SHARED"))
+
+
 def binary_path() -> Path:
-    candidates = [DIST / f"{APP_NAME}{EXE_SUFFIX}", DIST / APP_NAME]
+    """Locate the built executable, whichever engine produced it."""
+    candidates = [
+        DIST / f"{APP_NAME}{EXE_SUFFIX}",                       # PyInstaller onefile
+        DIST / APP_NAME,
+        DIST / APP_NAME / f"{APP_NAME}{EXE_SUFFIX}",            # onedir
+        DIST / APP_NAME / "timetable-generator",                # cx_Freeze on POSIX
+        DIST / APP_NAME / "TimetableGenerator.exe",
+    ]
     for candidate in candidates:
-        if candidate.exists():
+        if candidate.is_file():
             return candidate
     raise FileNotFoundError("Run `python packaging/build.py exe` first.")
+
+
+def payload_root() -> Path:
+    """The thing that has to be shipped: a single file, or the onedir folder."""
+    binary = binary_path()
+    return binary.parent if binary.parent != DIST else binary
 
 
 def write_version_info() -> None:
@@ -116,8 +137,31 @@ def write_version_info() -> None:
 # --------------------------------------------------------------------------- #
 # targets
 # --------------------------------------------------------------------------- #
-def build_exe() -> Path:
-    """Single-file executable via PyInstaller (all platforms)."""
+def build_exe(engine: str = "auto") -> Path:
+    """Build the executable.
+
+    engine="pyinstaller" -> one self-contained file (preferred)
+    engine="cxfreeze"    -> a folder containing the binary + libs (fallback)
+    engine="auto"        -> PyInstaller, falling back to cx_Freeze on failure
+    """
+    if engine in ("auto", "pyinstaller"):
+        if engine == "auto" and not shared_python_available():
+            say("This Python was built without a shared libpython "
+                "(PyInstaller cannot use it) - switching to cx_Freeze.")
+            print("    To use PyInstaller instead, install a shared build, e.g.\n"
+                  "      sudo apt install libpython3.11\n"
+                  "      PYTHON_CONFIGURE_OPTS=--enable-shared pyenv install 3.12")
+        else:
+            try:
+                return _build_pyinstaller()
+            except (subprocess.CalledProcessError, ImportError) as exc:
+                if engine == "pyinstaller":
+                    raise
+                say(f"PyInstaller failed ({exc.__class__.__name__}) - falling back to cx_Freeze.")
+    return _build_cxfreeze()
+
+
+def _build_pyinstaller() -> Path:
     ensure("PyInstaller", "pyinstaller")
     write_version_info()
     say(f"Building the {platform.system()} executable with PyInstaller")
@@ -126,6 +170,21 @@ def build_exe() -> Path:
     if not IS_WINDOWS:
         binary.chmod(0o755)
     say(f"Executable ready: {binary}  ({binary.stat().st_size / 1_048_576:.1f} MB)")
+    return binary
+
+
+def _build_cxfreeze() -> Path:
+    ensure("cx_Freeze", "cx_Freeze")
+    write_version_info()
+    say(f"Building the {platform.system()} executable with cx_Freeze")
+    target = DIST / APP_NAME
+    shutil.rmtree(target, ignore_errors=True)
+    run([sys.executable, str(PACKAGING / "cx_setup.py"), "build_exe", "--build-exe", str(target)])
+    binary = binary_path()
+    if not IS_WINDOWS:
+        binary.chmod(0o755)
+    total = sum(f.stat().st_size for f in target.rglob("*") if f.is_file()) / 1_048_576
+    say(f"Executable ready: {binary}  (folder total {total:.1f} MB)")
     return binary
 
 
@@ -157,20 +216,25 @@ def build_msi() -> Path:
 def build_portable() -> Path:
     """A no-install archive: binary + README + sample .env."""
     binary = binary_path()
+    root = payload_root()
     say("Building the portable archive")
     staging = BUILD / f"{APP_NAME}-{__version__}"
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
 
-    shutil.copy2(binary, staging / binary.name)
+    if root == binary:                       # single-file build
+        shutil.copy2(binary, staging / binary.name)
+    else:                                    # onedir build
+        shutil.copytree(root, staging / "app", symlinks=True)
     for extra in ("README.md", "LICENSE", "docs/USER_GUIDE.md", ".env.example"):
         source = ROOT / extra
         if source.exists():
             shutil.copy2(source, staging / Path(extra).name)
 
+    launch = binary.name if root == binary else f"app/{binary.name}"
     if IS_WINDOWS:
         (staging / "Start Timetable Generator.bat").write_text(
-            f'@echo off\r\nstart "" "%~dp0{binary.name}"\r\n', encoding="utf-8"
+            f'@echo off\r\nstart "" "%~dp0{launch.replace("/", chr(92))}"\r\n', encoding="utf-8"
         )
         archive = DIST / f"{APP_NAME}-{__version__}-windows-x64.zip"
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -178,7 +242,7 @@ def build_portable() -> Path:
                 zf.write(item, item.relative_to(staging.parent))
     else:
         (staging / "start.sh").write_text(
-            f'#!/bin/sh\ncd "$(dirname "$0")"\nexec ./{binary.name} "$@"\n', encoding="utf-8"
+            f'#!/bin/sh\ncd "$(dirname "$0")"\nexec ./{launch} "$@"\n', encoding="utf-8"
         )
         (staging / "start.sh").chmod(0o755)
         suffix = "macos" if IS_MAC else "linux"
@@ -207,8 +271,20 @@ def build_deb() -> Path:
     (stage / "usr/share/icons/hicolor/512x512/apps").mkdir(parents=True)
     (stage / "usr/share/doc/timetable-generator").mkdir(parents=True)
 
-    shutil.copy2(binary, stage / "usr/bin/timetable-generator")
-    (stage / "usr/bin/timetable-generator").chmod(0o755)
+    root = payload_root()
+    if root == binary:
+        shutil.copy2(binary, stage / "usr/bin/timetable-generator")
+        (stage / "usr/bin/timetable-generator").chmod(0o755)
+    else:
+        opt = stage / "opt/timetable-generator"
+        opt.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(root, opt, symlinks=True)
+        (opt / binary.name).chmod(0o755)
+        launcher = stage / "usr/bin/timetable-generator"
+        launcher.write_text(
+            f'#!/bin/sh\nexec /opt/timetable-generator/{binary.name} "$@"\n', encoding="utf-8"
+        )
+        launcher.chmod(0o755)
     if (PACKAGING / "icon.png").exists():
         shutil.copy2(PACKAGING / "icon.png", stage / "usr/share/icons/hicolor/512x512/apps/timetable-generator.png")
     shutil.copy2(ROOT / "README.md", stage / "usr/share/doc/timetable-generator/README.md")
@@ -289,6 +365,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="exe | msi | portable | deb | dmg | all (default: native set)")
     parser.add_argument("--no-clean", action="store_true", help="keep previous build output")
     parser.add_argument("--no-test", action="store_true", help="skip the unit tests and the binary smoke test")
+    parser.add_argument("--engine", choices=["auto", "pyinstaller", "cxfreeze"], default="auto",
+                        help="which freezer to use for the executable (default: auto)")
     args = parser.parse_args(argv)
 
     chosen = args.targets or native_targets()
@@ -311,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     for target in chosen:
         if target not in TARGETS:
             raise SystemExit(f"Unknown target {target!r}. Valid: {', '.join(TARGETS)}")
-        artifact = TARGETS[target]()
+        artifact = build_exe(args.engine) if target == "exe" else TARGETS[target]()
         if target == "exe" and not args.no_test:
             smoke_test(artifact)
         built.append(artifact)
