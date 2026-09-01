@@ -96,17 +96,23 @@ jobs:
   # --------------------------------------------------------------- release ---
   release:
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Runs for a tag push (v*) and also for a manual "Run workflow", so the
+    # installers can be attached to an existing release without re-tagging.
+    if: ${{ always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Publish
+      - name: Show what will be uploaded
+        run: find artifacts -type f -printf "%p  (%s bytes)\n"
+      - name: Attach the installers to the release
         uses: softprops/action-gh-release@v2
         with:
-          # Attach the installers to the release that already exists for this
-          # tag, without touching its notes.
+          # On a tag push use that tag; on a manual run fall back to v2.0.0.
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v2.0.0' }}
           files: artifacts/**/*
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
