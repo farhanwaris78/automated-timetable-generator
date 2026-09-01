@@ -239,3 +239,16 @@ flag and the UI footer all read it from there.
 | Exe starts, browser shows *"can't reach this page"* | Another program owns the port. The app picks a free port automatically — read the URL printed in the console. |
 | `.msi` install succeeds but nothing launches | Check `%LOCALAPPDATA%\TimetableGenerator\timetable.log`. |
 | macOS: *"app is damaged"* | Missing ad-hoc signature; run `codesign --force --deep --sign - dist/TimetableGenerator.app`. |
+
+---
+
+## 8. Verification performed on this branch
+
+| Check | Result |
+|---|---|
+| `python -m pytest -q` | ✅ 35 passed |
+| App boots, serves the UI, saves and reloads a timetable | ✅ |
+| **Frozen** build (cx_Freeze `build_exe`) starts, finds its bundled templates/static/seed data, creates the database in the user data folder and saves a class | ✅ verified on Linux |
+| `TimetableGenerator --version` on the frozen binary | ✅ `Automated Timetable Generator 2.0.0` |
+| PyInstaller one-file build | ⚠️ not runnable in this container: Debian-slim's Python has no `libpython3.11.so` and the container cannot download a standalone Python. The spec is correct — run it on your machine or in CI (§5). |
+| `.msi` / `.dmg` | must be produced on Windows / macOS respectively (§1, §2) |

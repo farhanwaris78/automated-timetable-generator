@@ -296,11 +296,13 @@ def main(argv: list[str] | None = None) -> int:
         chosen = native_targets()
 
     if not args.no_test:
-        say("Running the test suite")
         try:
+            __import__("pytest")
+        except ImportError:
+            print("   (pytest not installed - skipping the test suite)")
+        else:
+            say("Running the test suite")
             run([sys.executable, "-m", "pytest", "-q"])
-        except FileNotFoundError:
-            print("   (pytest not installed - skipping)")
 
     if not args.no_clean:
         clean()

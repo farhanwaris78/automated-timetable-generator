@@ -66,7 +66,7 @@ executables = [
     Executable(
         script=str(PROJECT_ROOT / "launcher.py"),
         target_name="TimetableGenerator.exe" if IS_WINDOWS else "timetable-generator",
-        base="Console",                     # console build => errors stay visible
+        base="console" if IS_WINDOWS else None,   # console build => errors stay visible
         icon=str(icon) if icon.exists() else None,
         shortcut_name="Automated Timetable Generator",
         shortcut_dir="ProgramMenuFolder",
