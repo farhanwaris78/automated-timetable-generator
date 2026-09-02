@@ -82,7 +82,12 @@
     future: [],
     manageTab: "teachers",
     project: { name: "Untitled project", path: null, savedAt: null, recent: [], home: "", suffix: ".ttproj" },
-    fs: { cwd: "", mode: "open", selected: null, newFolder: false, writable: true, roots: [], places: [], files: [], dirs: [] }
+    fs: { cwd: "", mode: "open", selected: null, newFolder: false, writable: true, roots: [], places: [], files: [], dirs: [] },
+    exportOptions: {
+      layout: "schedule", fontName: "Times New Roman", fontSize: 10, orientation: "landscape",
+      institution: "", term: "", program: "", semester: "", commencement: "",
+      showSummary: true, showByTeacher: true, showUnscheduled: true, showSemesters: true
+    }
   };
 
   var uidSeq = 1;
@@ -1362,6 +1367,9 @@
     if (config.shiftHours && config.shiftHours.morning && config.shiftHours.evening) {
       state.shiftHours = config.shiftHours;
     }
+    if (config.export) {
+      state.exportOptions = Object.assign({}, state.exportOptions, config.export);
+    }
   }
 
   function saveToDatabase() {
@@ -1511,6 +1519,7 @@
     state.fs.mode = mode;
     state.fs.selected = null;
     state.fs.newFolder = false;
+    state.fs._fallbackIndex = 0;   // allow the read-only-folder fallback again
     $("#fsNewFolderRow").hidden = true;
     var sampleRow = $("#projectSampleRow");
     if (sampleRow) {
@@ -1520,6 +1529,10 @@
     }
     var preview = $("#fsSaveTarget");
     if (preview) preview.hidden = mode !== "saveAs";
+    // The project name is ALWAYS editable - it is the whole point of the dialog.
+    // Nothing should ever grey it out (that was a reported bug).
+    var nameInput = $("#projectNameInput");
+    if (nameInput) { nameInput.disabled = false; nameInput.readOnly = false; }
 
     var title = $("#projectDialogTitle");
     var primary = $("#projectPrimaryBtn");
@@ -1628,6 +1641,21 @@
         state.fs.writable = data.writable !== false;
         state.fs.roots = data.roots || state.fs.roots || [];
         state.fs.places = data.places || state.fs.places || [];
+        // A Save-as dialog that opens on a read-only folder greys out the Save
+        // button and leaves the user stuck.  Automatically jump to a writable
+        // place (Documents / Desktop / home) instead - the name stays editable
+        // and the user can always browse somewhere else.
+        if (state.fs.mode === "saveAs" && state.fs.writable === false) {
+          var candidates = [];
+          (state.fs.places || []).forEach(function (place) { candidates.push(place.path); });
+          if (state.project.home) candidates.push(state.project.home);
+          var attempt = state.fs._fallbackIndex || 0;
+          if (attempt < candidates.length && candidates[attempt] && candidates[attempt] !== data.path) {
+            state.fs._fallbackIndex = attempt + 1;
+            toast("Folder is read-only", "Showing a writable folder instead.", "warning");
+            return loadFsList(candidates[attempt]);
+          }
+        }
         renderFsBreadcrumbs(data);
         renderFsPlaces();
         renderFsList(data);
@@ -2038,10 +2066,74 @@
     return body;
   }
 
+  /* ---- export formatting options --------------------------------------- */
+  /* These are shown in the Export & share dialog and persisted server-side so
+     a font / orientation choice survives the next run. */
+  function readExportOptions() {
+    state.exportOptions = {
+      layout: $("#exportLayout").value || "schedule",
+      fontName: $("#exportFont").value || "Times New Roman",
+      fontSize: parseInt($("#exportSize").value, 10) || 10,
+      orientation: $("#exportOrientation").value || "landscape",
+      institution: $("#exportInstitution").value.trim(),
+      term: $("#exportTerm").value.trim(),
+      program: $("#exportProgram").value.trim(),
+      semester: $("#exportSemester").value.trim(),
+      commencement: $("#exportCommencement").value.trim(),
+      showSummary: $("#exportShowSummary").checked,
+      showByTeacher: $("#exportShowByTeacher").checked,
+      showUnscheduled: $("#exportShowUnscheduled").checked,
+      showSemesters: $("#exportShowSemesters").checked
+    };
+  }
+
+  function writeExportOptionsToForm() {
+    var o = state.exportOptions;
+    $("#exportLayout").value = o.layout || "schedule";
+    $("#exportFont").value = o.fontName || "Times New Roman";
+    $("#exportSize").value = String(o.fontSize || 10);
+    $("#exportOrientation").value = o.orientation || "landscape";
+    $("#exportInstitution").value = o.institution || "";
+    $("#exportTerm").value = o.term || "";
+    $("#exportProgram").value = o.program || "";
+    $("#exportSemester").value = o.semester || "";
+    $("#exportCommencement").value = o.commencement || "";
+    $("#exportShowSummary").checked = !!o.showSummary;
+    $("#exportShowByTeacher").checked = !!o.showByTeacher;
+    $("#exportShowUnscheduled").checked = !!o.showUnscheduled;
+    $("#exportShowSemesters").checked = !!o.showSemesters;
+  }
+
+  function persistExportOptions() {
+    readExportOptions();
+    api("/api/settings", { method: "POST", body: { export: state.exportOptions } })
+      .catch(function () { /* non fatal */ });
+  }
+
+  /* The option keys the Python export/publish endpoints expect. */
+  function exportStyleBody() {
+    readExportOptions();
+    return {
+      layout: state.exportOptions.layout,
+      font_name: state.exportOptions.fontName,
+      font_size: state.exportOptions.fontSize,
+      orientation: state.exportOptions.orientation,
+      institution: state.exportOptions.institution,
+      term: state.exportOptions.term,
+      program: state.exportOptions.program,
+      semester: state.exportOptions.semester,
+      commencement: state.exportOptions.commencement,
+      show_summary: state.exportOptions.showSummary,
+      show_by_teacher: state.exportOptions.showByTeacher,
+      show_unscheduled: state.exportOptions.showUnscheduled,
+      show_semesters: state.exportOptions.showSemesters
+    };
+  }
+
   function exportExcel() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
     toast("Building workbook", "One sheet per day and per semester…", "info", 2500);
-    runExport("/api/export/xlsx", exportBody({}), "timetable.xlsx",
+    runExport("/api/export/xlsx", exportBody(exportStyleBody()), "timetable.xlsx",
       "Excel exported — Summary, one sheet per day, one per semester, By Teacher.")
       .catch(function (err) { toast("Excel export failed", err.message, "error"); });
   }
@@ -2118,7 +2210,7 @@
     var select = $("#publishFilter");
     var scope = $("#publishScope").value;
     select.innerHTML = '<option value="">Everyone / everything</option>';
-    if (scope === "all") { select.disabled = true; updatePublishLink(); return; }
+    if (scope === "all" || scope === "schedule") { select.disabled = true; updatePublishLink(); return; }
     select.disabled = false;
 
     if (scope === "teacher") {
@@ -2170,6 +2262,13 @@
   }
 
   function updatePublishLink() {
+    var link = $("#publishLink");
+    // The standalone desktop window has no web feed to subscribe to - tell the
+    // user the calendar is exported as a file instead of showing a dead URL.
+    if (window.__NATIVE__) {
+      link.textContent = "Desktop build: use “Export calendar” to save the .ics file.";
+      return;
+    }
     var params = [];
     var filter = $("#publishFilter").value;
     if (filter) {
@@ -2179,7 +2278,7 @@
       });
     }
     params.push("weeks=" + (parseInt($("#publishWeeks").value, 10) || 16));
-    $("#publishLink").textContent = window.location.origin + "/calendar.ics?" + params.join("&");
+    link.textContent = window.location.origin + "/calendar.ics?" + params.join("&");
   }
 
   function openPublishDialog() {
@@ -2187,6 +2286,7 @@
       toast("Nothing to publish", "Schedule or load a timetable first.", "warning");
       return;
     }
+    writeExportOptionsToForm();
     fillPublishFilter();
     openDialog("#publishDialog");
   }
@@ -2194,7 +2294,7 @@
   function publishPdf() {
     var scope = $("#publishScope").value;
     toast("Building PDF", "Laying out the pages…", "info", 2000);
-    runExport("/api/publish/pdf", publishBody({}), "timetable-" + scope + ".pdf", "PDF ready")
+    runExport("/api/publish/pdf", publishBody(exportStyleBody()), "timetable-" + scope + ".pdf", "PDF ready")
       .catch(function (err) { toast("PDF failed", err.message, "error"); });
   }
 
@@ -2286,7 +2386,7 @@
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
     // Built server-side so the CSV matches the workbook column-for-column and
     // can be written straight into the project folder.
-    runExport("/api/export/csv", exportBody({}), "timetable.csv", "CSV exported")
+    runExport("/api/export/csv", exportBody(exportStyleBody()), "timetable.csv", "CSV exported")
       .catch(function (err) { toast("CSV export failed", err.message, "error"); });
   }
 
@@ -2948,9 +3048,20 @@
     $("#publishScope").addEventListener("change", fillPublishFilter);
     $("#publishFilter").addEventListener("change", updatePublishLink);
     $("#publishWeeks").addEventListener("input", updatePublishLink);
+    $("#publishExcelBtn").addEventListener("click", exportExcel);
+    $("#publishCsvBtn").addEventListener("click", exportCsv);
     $("#publishPdfBtn").addEventListener("click", publishPdf);
     $("#publishIcsBtn").addEventListener("click", publishIcs);
     $("#publishCopyBtn").addEventListener("click", copyPublishLink);
+    // Export formatting options are remembered, so the next export starts
+    // with the same font / orientation the user last picked.
+    ["#exportLayout", "#exportFont", "#exportSize", "#exportOrientation", "#exportInstitution", "#exportTerm",
+     "#exportProgram", "#exportSemester", "#exportCommencement",
+     "#exportShowSummary", "#exportShowByTeacher", "#exportShowUnscheduled", "#exportShowSemesters"]
+      .forEach(function (selector) {
+        var field = $(selector);
+        if (field) field.addEventListener("change", persistExportOptions);
+      });
 
     $("#downloadTemplateBtn").addEventListener("click", downloadTemplate);
     $("#runImportBtn").addEventListener("click", runImport);

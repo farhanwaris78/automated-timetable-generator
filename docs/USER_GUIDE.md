@@ -18,6 +18,11 @@ your machine happens to be missing the webview runtime the app quietly opens
 your default browser instead — <code>--browser</code> forces that. Closing the
 window stops the app.
 
+The default window is a **true standalone program**: it does **not** start a
+hidden web server, bind a port, or open a terminal — every feature (including
+Excel/PDF/CSV exports and calendar files) runs entirely inside the one process
+and works fully offline. It is software, not a service.
+
 **Projects** in the bar above the toolbar: **New** (<kbd>Ctrl+N</kbd>) starts
 a fresh dataset, **Open** (<kbd>Ctrl+O</kbd>) loads a `.ttproj` file, **Save**
 (<kbd>Ctrl+S</kbd>) stores everything in the project file and **Save as**
@@ -191,8 +196,30 @@ into something you can hand out.
 Then pick the **data**: the grid on screen (including unsaved changes) or the
 saved timetable, optionally limited to a single teacher, section or room.
 
+Every Excel, CSV and PDF export shares a **Formatting** panel so the output
+matches your institution's style:
+
+| Option | Effect |
+|---|---|
+| **Layout** | **Grid** (default) is the day/semester workbook above; **Class Schedule** is the printed list with one-coloured band per day and 8 columns — *Days, Course Code, Course Title, C.Hrs, Total No.of Students, Teacher's Name, Time, Room No*. Either is available for Excel **and** PDF. |
+| **Font** | the typeface applied to **every** cell and every PDF character — **Times New Roman** by default (also Arial, Calibri, Georgia, Courier New) |
+| **Font size** | the body text size (9–12) |
+| **Orientation** | landscape (default) or portrait for each printed page |
+| **Institution / Academic term** | a heading line on the summary, day and semester sheets, e.g. *City University · Spring 2026* |
+| **Summary sheet** | the filterable class-by-class list |
+| **By Teacher sheet** | each teacher's personal week |
+| **Unscheduled list** | the gaps that still need a slot |
+| **One sheet per semester** | the batch view, rows = day × section |
+
+The choices are remembered between sessions, so once you set the font to Times
+New Roman it stays there for every later export.
+
+In the **Class Schedule** layout a class whose credit hours are **0** is shown
+as **“non-credited”** in the C.Hrs column automatically.
+
 * **Download PDF** writes the file straight from the app — no browser print
-  dialog, real vector text, and it looks the same on every machine.
+  dialog, real vector text (Times, matching the workbook), and it looks the
+  same on every machine.
 * **Download .ics** gives a calendar file you can open in any calendar app.
 * **Copy subscription link** copies a live URL such as
   `http://localhost:5000/calendar.ics?teacher=Dr.%20Ayesha%20Khan&weeks=16`.
@@ -247,11 +274,14 @@ saved timetable, optionally limited to a single teacher, section or room.
 9. **Load saved** restores the stored week (grid settings included) next time
    you open the app.
 10. **Export**:
-    * **Excel** (<kbd>Ctrl</kbd>+<kbd>E</kbd>) — **one worksheet per day** and **one per semester**,
-      colour-coded exactly like the screen, plus a filterable **Summary** sheet, a **By Teacher** sheet
-      and an **Unscheduled** sheet when something is missing. Both shifts are included.
-    * **Publish** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) — PDF for the whole grid or per
-      teacher / section / **semester** / room, plus `.ics` calendar files and a live subscription link.
+    * **Export Excel** (also in *Publish* → **Export Excel**, or on the toolbar) —
+      **one worksheet per day** and **one per semester**, colour-coded exactly like the screen,
+      plus a filterable **Summary** sheet, a **By Teacher** sheet and an **Unscheduled** sheet when
+      something is missing. Both shifts are included. All text is **Times New Roman** by default,
+      chosen in the *Formatting* panel.
+    * **Publish** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) — the same *Formatting* options,
+      PDF for the whole grid or per teacher / section / **semester** / room, plus `.ics` calendar
+      files and a live subscription link.
     * **CSV** (<kbd>Alt</kbd>+<kbd>V</kbd>) and **Print** (<kbd>Ctrl</kbd>+<kbd>P</kbd>).
 
 ### Keyboard shortcuts
