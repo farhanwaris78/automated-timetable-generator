@@ -4,7 +4,7 @@
   "version": "2.0.2",
   "description": "Headless DOM tests for the timetable drag & drop engine.",
   "scripts": {
-    "test": "node drag-and-drop.test.js"
+    "test": "node drag-and-drop.test.js && node project-dialog.test.js && node export-dialog.test.js"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

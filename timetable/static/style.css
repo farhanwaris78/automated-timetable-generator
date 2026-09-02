@@ -793,6 +793,65 @@ body.is-carrying td.slot { cursor: copy; }
   .fs-places { max-height: 130px; }
 }
 
+/* Export & share dialog formatting options. */
+.export-options {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcff;
+}
+.export-options legend {
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--brand-dark);
+}
+.export-include {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.export-include .checkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* Live preview of the Class Schedule title block, so the document
+   identity fields are visibly doing something before the export. */
+.export-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 2px;
+  padding: 9px 12px;
+  border: 1px solid #d5dcf2;
+  border-radius: 8px;
+  background: #eef2ff;
+}
+.export-preview-label {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--brand-dark);
+}
+.export-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 /* New-project options: blank (default) vs the bundled sample university. */
 .project-sample-row {
   margin: 10px 0 4px;

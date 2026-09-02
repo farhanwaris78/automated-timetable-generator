@@ -283,6 +283,38 @@ def ensure_project_suffix(path: str | Path) -> Path:
     return candidate
 
 
+def autosave_project(engine, project_path: str | Path, name: str, *, keep: int = MAX_BACKUPS) -> dict[str, Any]:
+    """Write a timestamped backup of the current project into ``_backups``.
+
+    Called periodically by the UI so a crash never loses more than a few
+    minutes of work.  The backups live **next to the project file** (in a
+    ``_backups`` folder) so they travel with the project and are easy to find,
+    and the newest ``keep`` are kept (older ones are pruned automatically).
+    """
+    source = Path(project_path).expanduser()
+    if not source.is_file():
+        raise ProjectError("There is no saved project to back up yet.")
+    backups = source.parent / "_backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    base = "".join(char for char in source.stem if char.isalnum() or char in " -_").strip() or "timetable"
+    target = backups / f"{base}-{stamp}{PROJECT_SUFFIX}"
+    result = write_project(engine, target, name or source.stem)
+
+    # Prune the oldest backups, keeping the newest `keep`.
+    rolling = sorted(
+        backups.glob(f"{base}-*{PROJECT_SUFFIX}"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for old in rolling[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return result
+
+
 def write_project(engine, path: str | Path, name: str) -> dict[str, Any]:
     """Save the working database to ``path`` as a portable .ttproj file."""
     target = ensure_project_suffix(path).resolve()

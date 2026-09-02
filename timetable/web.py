@@ -10,6 +10,7 @@ Design rules applied here:
 
 from __future__ import annotations
 
+import errno
 import io
 import logging
 import logging.handlers
@@ -45,6 +46,7 @@ from .projects import (
     PROJECT_MIMETYPE,
     PROJECT_SUFFIX,
     ProjectError,
+    autosave_project,
     list_recent_projects,
     new_project as create_new_project,
     open_project as open_project_file,
@@ -71,6 +73,16 @@ def home_dir() -> Path:
     from .filesystem import home_dir as _home
 
     return _home()
+
+
+def _file_in_use_message(target: Path, exc: OSError) -> str:
+    """A friendly, actionable message when a file cannot be overwritten."""
+    if exc.errno in (errno.EACCES, errno.EPERM, errno.EBUSY):
+        return (
+            f"\u201c{target.name}\u201d is open in another program (probably Excel). "
+            "Close it, then try the export again — nothing was changed."
+        )
+    return f"Could not write {target.name}: {exc.strerror or exc}"
 
 
 def _resolve_user_dir(raw: str | Path | None) -> Path:
@@ -352,8 +364,12 @@ def create_app(settings: Settings | None = None) -> Flask:
     def api_get_settings():
         import json
 
-        raw = service().get_setting("grid", "")
-        return jsonify(json.loads(raw) if raw else {})
+        grid_raw = service().get_setting("grid", "")
+        export_raw = service().get_setting("export", "")
+        grid = json.loads(grid_raw) if grid_raw else {}
+        if export_raw:
+            grid["export"] = json.loads(export_raw)
+        return jsonify(grid)
 
     @app.post("/api/settings")
     def api_set_settings():
@@ -362,7 +378,13 @@ def create_app(settings: Settings | None = None) -> Flask:
         payload = request.get_json(silent=True) or {}
         if not isinstance(payload, dict):
             raise ValidationError("Settings must be an object")
-        service().set_setting("grid", json.dumps(payload))
+        # The grid settings and the export style are stored separately so
+        # either can be edited without clobbering the other.
+        export_opts = payload.get("export")
+        if isinstance(export_opts, dict):
+            service().set_setting("export", json.dumps(export_opts))
+        grid_opts = {key: value for key, value in payload.items() if key != "export"}
+        service().set_setting("grid", json.dumps(grid_opts))
         return jsonify({"ok": True})
 
     # ---- projects --------------------------------------------------------- #
@@ -463,6 +485,27 @@ def create_app(settings: Settings | None = None) -> Flask:
         if not path.is_file():
             raise ProjectError(f"Project file not found: {path.name}")
         return jsonify(_project_meta(path))
+
+    @app.post("/api/project/autosave")
+    def api_project_autosave():
+        """Periodic backup of the current project into its own ``_backups`` folder."""
+        payload = request.get_json(silent=True) or {}
+        state = read_project_state(data_dir)
+        raw_path = str(payload.get("path") or state.get("path") or "").strip()
+        if not raw_path:
+            return jsonify({"ok": False, "skipped": True})
+        engine_ = app.extensions.get("engine")
+        if engine_ is None:
+            raise DatabaseError(app.extensions.get("db_error") or "Database is not configured")
+        file_start = datetime.now()
+        result = autosave_project(
+            engine_,
+            _resolve_user_file(raw_path),
+            str(payload.get("name") or state.get("name") or "Untitled project"),
+        )
+        result["ok"] = True
+        result["took_ms"] = int((datetime.now() - file_start).total_seconds() * 1000)
+        return jsonify(result)
 
     @app.delete("/api/project/recent")
     def api_project_remove_recent():
@@ -682,6 +725,10 @@ def create_app(settings: Settings | None = None) -> Flask:
             tmp.write_bytes(data)
             tmp.replace(target)          # atomic: no half-written spreadsheets
         except OSError as exc:
+            # A locked destination - almost always the file is still open in
+            # Excel / LibreOffice.  Tell the user instead of failing silently.
+            if target.exists():
+                raise FileSystemError(_file_in_use_message(target, exc)) from None
             try:
                 if tmp.exists():
                     tmp.unlink()
@@ -708,6 +755,33 @@ def create_app(settings: Settings | None = None) -> Flask:
             raise ValidationError("There is nothing to export yet.")
         return entries, assignments
 
+    def _export_style(payload: dict[str, Any]) -> dict[str, Any]:
+        """Merge the UI's export settings (saved on the server) with the ones
+        sent for this particular export, so a font choice sticks between runs."""
+        import json
+
+        raw = service().get_setting("export", "")
+        saved = json.loads(raw) if raw else {}
+
+        def pick(key: str, default: Any = None) -> Any:
+            return payload.get(key, saved.get(key, default))
+
+        return {
+            "font_name": str(pick("font_name", "Times New Roman") or "Times New Roman"),
+            "font_size": int(pick("font_size", 10) or 10),
+            "orientation": str(pick("orientation", "landscape") or "landscape"),
+            "institution": str(pick("institution", "") or ""),
+            "term": str(pick("term", "") or ""),
+            "layout": str(pick("layout", "grid") or "grid"),
+            "program": str(pick("program", "") or ""),
+            "commencement": str(pick("commencement", "") or ""),
+            "semester": str(pick("semester", "") or ""),
+            "show_summary": bool(pick("show_summary", True)),
+            "show_by_teacher": bool(pick("show_by_teacher", True)),
+            "show_unscheduled": bool(pick("show_unscheduled", True)),
+            "show_semesters": bool(pick("show_semesters", True)),
+        }
+
     @app.post("/api/export/xlsx")
     def api_export_xlsx():
         if not openpyxl_available():
@@ -718,6 +792,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         payload = request.get_json(silent=True) or {}
         entries, assignments = _export_entries(payload)
         svc = service()
+        style = _export_style(payload)
         workbook = build_workbook(
             entries,
             svc.list_rooms(),
@@ -726,6 +801,19 @@ def create_app(settings: Settings | None = None) -> Flask:
             shift=str(payload.get("shift") or "all"),
             title=str(payload.get("title") or "University Timetable"),
             unscheduled=svc.unscheduled(assignments if assignments else None),
+            font_name=style["font_name"],
+            font_size=style["font_size"],
+            orientation=style["orientation"],
+            institution=style["institution"],
+            term=style["term"],
+            layout=style["layout"],
+            program=style["program"],
+            commencement=style["commencement"],
+            semester=style["semester"],
+            show_summary=style["show_summary"],
+            show_by_teacher=style["show_by_teacher"],
+            show_unscheduled=style["show_unscheduled"],
+            show_semesters=style["show_semesters"],
         )
         return _deliver(
             workbook,
@@ -833,8 +921,15 @@ def create_app(settings: Settings | None = None) -> Flask:
         if not entries:
             raise ValidationError("Nothing matches that selection, so there is no PDF to make.")
         scope = str(payload.get("scope") or "all")
-        if scope not in ("all", "teacher", "section", "room", "semester"):
-            raise ValidationError("scope must be one of: all, teacher, section, room, semester.")
+        valid_scopes = (
+            "all", "teacher", "section", "room", "semester",
+            "schedule", "day", "utilisation", "workload", "conflict",
+        )
+        if scope not in valid_scopes:
+            raise ValidationError(
+                "scope must be one of: " + ", ".join(valid_scopes) + "."
+            )
+        style = _export_style(payload)
         pdf = build_pdf(
             entries,
             service().list_rooms(),
@@ -842,6 +937,13 @@ def create_app(settings: Settings | None = None) -> Flask:
             days=int(payload.get("days") or max(int(e["day"]) for e in entries)),
             slots=payload.get("slots") or None,
             title=str(payload.get("title") or "University Timetable"),
+            font_name=style["font_name"],
+            institution=style["institution"],
+            term=style["term"],
+            layout=style["layout"],
+            program=style["program"],
+            commencement=style["commencement"],
+            semester=style["semester"],
         )
         return _deliver(
             pdf,

@@ -291,7 +291,7 @@ def test_database_failure_is_reported_gracefully(tmp_path):
 # v2.1 - catalogue management, shifts, auto-fill, Excel export
 # =========================================================================== #
 from timetable.catalog import CatalogService  # noqa: E402
-from timetable.exporters import build_workbook, openpyxl_available  # noqa: E402
+from timetable.exporters import build_workbook, format_time_range, openpyxl_available  # noqa: E402
 
 
 @pytest.fixture()
@@ -1151,3 +1151,332 @@ def test_the_shortcut_hints_are_no_longer_printed_on_the_controls():
     # but the reference itself still lists them
     assert html.count("<kbd>") > 10
     assert 'title="Morning shift (Alt+1)"' in html
+
+
+# ======================= v2.4: Class Schedule printed list ===================== #
+
+
+@pytest.mark.parametrize("start,end,expected", [
+    ("14:30", "16:00", "2:30 PM - 4:00 PM"),
+    ("08:30", "09:50", "8:30 AM - 9:50 AM"),
+    ("00:00", "12:00", "12:00 AM - 12:00 PM"),
+    ("23:00", "23:30", "11:00 PM - 11:30 PM"),
+])
+def test_format_time_range_uses_am_pm(start, end, expected):
+    assert format_time_range(start, end) == expected
+
+
+def _schedule_entries():
+    """A tiny timetable including a zero-credit (Non-credited) course."""
+    return [
+        {
+            "id": 1, "day": 1, "start_time": "14:30", "end_time": "16:00", "shift": "morning",
+            "room_id": 1, "room_number": "105", "room_label": "A-105", "course_id": 101,
+            "code": "CHEM4134", "course_name": "Special Paper - I", "section": "A",
+            "color": "#a9d2e1", "instructor": "Miss Fozia", "num_students": 42,
+            "semester": 4, "kind": "theory", "credit_hours": 3,
+        },
+        {
+            "id": 2, "day": 1, "start_time": "16:00", "end_time": "17:30", "shift": "morning",
+            "room_id": 1, "room_number": "105", "room_label": "A-105", "course_id": 102,
+            "code": "CHEM4130", "course_name": "Food and Drug Analysis", "section": "A",
+            "color": "#a9d2e1", "instructor": "Mr Umar Faraz", "num_students": 40,
+            "semester": 4, "kind": "theory", "credit_hours": 3,
+        },
+        {
+            "id": 3, "day": 4, "start_time": "17:30", "end_time": "18:30", "shift": "morning",
+            "room_id": 9, "room_number": "mosque", "room_label": "mosque", "course_id": 120,
+            "code": "", "course_name": "Tajuma Quran course", "section": "A",
+            "color": "#a9d2e1", "instructor": "Dr. Bilal", "num_students": 0,
+            "semester": 4, "kind": "theory", "credit_hours": 0,
+        },
+    ]
+
+
+_SCHEDULE_ROOMS = [
+    {"id": 1, "room_number": "105", "label": "A-105", "capacity": 60, "room_type": "Classroom"},
+    {"id": 9, "room_number": "mosque", "label": "mosque", "capacity": 0, "room_type": "Classroom"},
+]
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_class_schedule_layout_matches_the_reference():
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    data = build_workbook(
+        _schedule_entries(), _SCHEDULE_ROOMS, days=5, layout="schedule",
+        title="Class Schedule", term="Spring 2024",
+        institution="University of Education Jauharabad Campus",
+        program="BS Chemistry (Post ADP)", semester="4", commencement="January 2024",
+    )
+    book = load_workbook(_io.BytesIO(data))
+    assert book.sheetnames == ["Class Schedule"]
+    sheet = book["Class Schedule"]
+
+    # metadata title block
+    assert sheet.cell(row=1, column=1).value == "Class Schedule Spring 2024"
+    assert sheet.cell(row=2, column=1).value == "University of Education Jauharabad Campus"
+    assert "Name of program: BS Chemistry (Post ADP)" in str(sheet.cell(row=3, column=1).value)
+    assert "Semester: 4" in str(sheet.cell(row=3, column=5).value)
+    assert sheet.cell(row=4, column=1).value == "Commencement of Classes: January 2024"
+
+    # header row (find it after the metadata block)
+    header = None
+    for r in range(1, 8):
+        if sheet.cell(row=r, column=1).value == "Days":
+            header = r
+            break
+    assert header is not None, "header row not found"
+    expected = ["Days", "Course Code", "Course Title", "C.Hrs", "Total No.of Students",
+                "Teacher's Name", "Time", "Room No"]
+    assert [sheet.cell(row=header, column=c).value for c in range(1, 9)] == expected
+
+    # Monday block
+    mon = header + 1
+    assert sheet.cell(row=mon, column=1).value == "Monday"
+    assert sheet.cell(row=mon, column=2).value == "CHEM4134"
+    assert sheet.cell(row=mon, column=4).value == "3"           # credit hours
+    assert sheet.cell(row=mon, column=7).value == "2:30 PM - 4:00 PM"   # AM/PM 12h range
+    assert sheet.cell(row=mon, column=8).value == "105"
+
+    # Non-credited course (credit hours == 0)
+    thu = next(r for r in range(header + 1, sheet.max_row + 1)
+               if sheet.cell(row=r, column=3).value == "Tajuma Quran course")
+    assert sheet.cell(row=thu, column=1).value == "Thursday"
+    assert sheet.cell(row=thu, column=4).value == "non-credited course"
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_grid_layout_is_still_the_default_when_layout_is_omitted():
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    data = build_workbook(_schedule_entries(), _SCHEDULE_ROOMS, days=1)
+    book = load_workbook(_io.BytesIO(data))
+    assert "Class Schedule" not in book.sheetnames
+    assert "Summary" in book.sheetnames and "Monday" in book.sheetnames
+
+
+def test_credit_hours_are_carried_into_export_entries(service):
+    """describe_assignments must expose credit_hours so exports can spot non-credited courses."""
+    from timetable.services import Assignment
+
+    entry = service.describe_assignments([
+        Assignment(day=1, start_time="08:30", end_time="09:50", room_id=1,
+                   course_id=101, section="A")
+    ])[0]
+    assert "credit_hours" in entry
+    assert entry["credit_hours"] >= 1
+
+
+def test_schedule_pdf_renders_a_single_landscape_page():
+    """layout='schedule' on build_pdf must produce a valid single-page document."""
+    from timetable.publishing import build_pdf
+
+    data = build_pdf(
+        _schedule_entries(), _SCHEDULE_ROOMS, days=5, layout="schedule",
+        title="Class Schedule", term="Spring 2024",
+        institution="University of Education Jauharabad Campus",
+        program="BS Chemistry (Post ADP)", semester="4", commencement="January 2024",
+    )
+    assert data.startswith(b"%PDF-1.4")
+    assert data.count(b"/Type /Page ") == 1
+
+
+# =================== v2.5: standalone desktop (no server) ==================== #
+def test_standalone_html_is_self_contained(app):
+    """The native window must not depend on a Flask static server at all."""
+    from timetable.desktop import _build_standalone_html
+
+    html = _build_standalone_html(app)
+    # assets are inlined, not referenced from /static
+    assert "rel=\"stylesheet\" href=\"/static" not in html
+    assert "<script defer src=\"/static" not in html
+    assert html.count("<style>") >= 1
+    assert "front-end controller" in html            # app.js is embedded
+    # the in-process fetch shim is injected before the controller
+    assert "window.__NATIVE__" in html
+    assert "window.pywebview.api" in html
+    # renders the title/version without error
+    assert "Automated Timetable Generator" in html
+
+
+def test_native_bridge_routes_requests_in_process(app):
+    """The desktop bridge must answer the same endpoints as the HTTP server."""
+    from timetable.desktop import _NativeBridge
+
+    bridge = _NativeBridge(app)
+
+    health = bridge.request({"method": "GET", "path": "/api/health", "query": ""})
+    assert health["status"] == 200
+    assert '"status":"ok"' in health["text"]
+
+    validate = bridge.request({
+        "method": "POST", "path": "/api/timetable/validate", "query": "", "raw": False,
+        "body": '{"candidate":{"day":1,"start_time":"08:30","end_time":"09:50",'
+                '"room_id":1,"course_id":101,"section":"A"},"grid":[]}',
+    })
+    assert validate["status"] == 200
+    assert '"ok":true' in validate["text"]
+
+    wrong = bridge.request({"method": "GET", "path": "/api/does-not-exist", "query": ""})
+    assert wrong["status"] == 404
+
+
+def test_native_bridge_streams_binary_exports(app):
+    """Raw (binary) exports come back as base64 so the window can save them."""
+    import base64
+
+    from timetable.desktop import _NativeBridge
+
+    bridge = _NativeBridge(app)
+    body = '{"assignments":[{"day":1,"start_time":"08:30","end_time":"09:50",' \
+           '"room_id":1,"course_id":101,"section":"A","shift":"morning"}],' \
+           '"days":2,"shift":"all"}'
+    result = bridge.request({
+        "method": "POST", "path": "/api/export/csv", "query": "", "raw": True, "body": body,
+    })
+    assert result["status"] == 200
+    raw = base64.b64decode(result["base64"])
+    assert raw.startswith("\ufeff".encode("utf-8"))     # Excel-friendly BOM
+    assert b"Monday" in raw
+
+
+# ======================= v2.6: reports, day scope, autosave ==================== #
+from timetable.reports import conflict_report, room_utilisation, teacher_workload  # noqa: E402
+from timetable.exporters import build_workbook  # noqa: E402
+
+
+def _report_entries():
+    """Three classes with one room conflict and a 0-credit course."""
+    return [
+        {
+            "id": 1, "day": 1, "start_time": "08:30", "end_time": "09:50", "shift": "morning",
+            "room_id": 1, "room_number": "101", "room_label": "A-101", "course_id": 101,
+            "code": "CS3009", "course_name": "Artificial Intelligence", "section": "A",
+            "kind": "theory", "semester": 1, "instructor": "Dr A", "num_students": 40,
+            "credit_hours": 3, "capacity": 60,
+        },
+        {
+            "id": 2, "day": 1, "start_time": "08:30", "end_time": "09:50", "shift": "morning",
+            "room_id": 1, "room_number": "101", "room_label": "A-101", "course_id": 102,
+            "code": "CS4001", "course_name": "Machine Learning", "section": "B",
+            "kind": "theory", "semester": 2, "instructor": "Dr B", "num_students": 30,
+            "credit_hours": 3, "capacity": 60,
+        },
+        {
+            "id": 3, "day": 2, "start_time": "17:30", "end_time": "18:30", "shift": "morning",
+            "room_id": 9, "room_number": "mosque", "room_label": "mosque", "course_id": 120,
+            "code": "", "course_name": "Tajuma Quran course", "section": "A",
+            "kind": "theory", "semester": 4, "instructor": "Dr Bilal", "num_students": 0,
+            "credit_hours": 0, "capacity": 0,
+        },
+    ]
+
+
+_REPORT_ROOMS = [
+    {"id": 1, "room_number": "101", "label": "A-101", "capacity": 60, "room_type": "Classroom"},
+    {"id": 9, "room_number": "mosque", "label": "mosque", "capacity": 0, "room_type": "Classroom"},
+]
+
+
+def test_room_utilisation_report_flags_under_used_rooms():
+    slots = [{"start": "08:30", "end": "09:50"}, {"start": "10:00", "end": "11:20"}]
+    report = room_utilisation(_report_entries(), _REPORT_ROOMS, days=5, slots=slots)
+    assert report["headers"][0] == "Room"
+    assert "Utilisation" in report["headers"]
+
+    a101 = next(r for r in report["rows"] if r[0] == "A-101")
+    assert a101[3] == 2                       # two classes per week
+    assert a101[6].endswith("%")
+    # the 0-credit course is in the "mosque" room of capacity 0 -> under-used
+    mosque = next(r for r in report["rows"] if r[0] == "mosque")
+    assert mosque[6].endswith("%")
+
+
+def test_teacher_workload_report_orders_by_hours():
+    report = teacher_workload(_report_entries())
+    assert "Contact hours / week" in report["headers"]
+    hours = [row[2] for row in report["rows"]]
+    assert hours == sorted(hours, reverse=True)
+    dr_a = next(r for r in report["rows"] if r[0] == "Dr A")
+    assert dr_a[1] == 1                       # one theory class
+
+
+def test_conflict_report_sorts_errors_before_warnings():
+    report = conflict_report(_report_entries())
+    assert report["rows"]
+    severities = [row[0] for row in report["rows"]]
+    # All "Error" rows come before any "Warning" row.
+    try:
+        first_warning = severities.index("Warning")
+    except ValueError:
+        first_warning = len(severities)
+    assert all(severity == "Error" for severity in severities[:first_warning])
+    assert any("Same room booked twice" in row[7] for row in report["rows"])
+
+
+@pytest.mark.parametrize("scope,pages", [
+    ("day", 2),          # two days with classes -> two pages
+])
+def test_publish_day_scope_is_one_page_per_day(scope, pages):
+    from timetable.publishing import build_pdf
+    data = build_pdf(_report_entries(), _REPORT_ROOMS, days=5, scope=scope, layout="grid")
+    assert data.startswith(b"%PDF-1.4")
+    assert data.count(b"/Type /Page ") == pages
+
+
+@pytest.mark.parametrize("scope", ["utilisation", "workload", "conflict"])
+def test_publish_report_scopes_produce_valid_pdfs(scope):
+    from timetable.publishing import build_pdf
+    data = build_pdf(_report_entries(), _REPORT_ROOMS, days=5, scope=scope, layout="grid")
+    assert data.startswith(b"%PDF-1.4")
+    assert data.count(b"/Type /Page ") == 1
+
+
+def test_workbook_contains_the_report_sheets():
+    import io as _io
+    from openpyxl import load_workbook
+
+    data = build_workbook(_report_entries(), _REPORT_ROOMS, days=5, layout="grid")
+    book = load_workbook(_io.BytesIO(data))
+    assert "Room Utilisation" in book.sheetnames
+    assert "Teacher Workload" in book.sheetnames
+    assert "Conflict Report" in book.sheetnames
+    sheet = book["Conflict Report"]
+    assert sheet.cell(row=3, column=1).value == "Severity"
+
+
+def test_project_autosave_writes_a_backup_next_to_the_project(app, tmp_path):
+    from timetable.projects import autosave_project
+
+    client = app.test_client()
+    project = client.post("/api/project/save", json={
+        "name": "Autosave Test", "path": str(tmp_path / "proj")
+    }).get_json()
+    assert project["ok"] is True
+
+    engine = app.extensions["engine"]
+    backup = autosave_project(engine, project["path"], "Autosave Test")
+    assert backup["ok"] is True
+    backup_path = backup["path"]
+    assert backup_path.endswith(".ttproj")
+    parent = Path(backup_path).parent
+    assert parent.name == "_backups"
+    assert Path(backup_path).is_file()
+    assert len(list(parent.glob("proj-*.ttproj"))) >= 1
+
+
+def test_project_autosave_via_api(app, tmp_path):
+    client = app.test_client()
+    project = client.post("/api/project/save", json={
+        "name": "API Autosave", "path": str(tmp_path / "api-proj")
+    }).get_json()
+    assert project["ok"] is True
+
+    result = client.post("/api/project/autosave", json={"path": project["path"]}).get_json()
+    assert result["ok"] is True
+    assert Path(result["path"]).is_file()

@@ -454,17 +454,18 @@
     </div>
   </div>
 
-  <!-- publish: PDF + calendar -->
+  <!-- publish + export options: Excel / CSV / PDF / calendar -->
   <div id="publishDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="publishDialogTitle" hidden>
     <div class="dialog-card dialog-wide">
       <header class="dialog-head">
-        <h3 id="publishDialogTitle">Publish &amp; share</h3>
+        <h3 id="publishDialogTitle">Export &amp; share</h3>
         <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
       </header>
       <div class="dialog-body">
         <div class="form-grid">
-          <label for="publishScope">What to publish</label>
+          <label for="publishScope">What to export</label>
           <select id="publishScope">
+            <option value="schedule">Class Schedule - list by day (printed look)</option>
             <option value="all">Master grid - one page per day</option>
             <option value="teacher">One page per teacher</option>
             <option value="section">One page per course section</option>
@@ -483,7 +484,63 @@
           <label for="publishWeeks">Calendar repeats for</label>
           <input type="number" id="publishWeeks" min="1" max="52" value="16">
         </div>
+
+        <!-- formatting options shared by Excel, PDF and CSV -->
+        <fieldset class="export-options">
+          <legend>Formatting</legend>
+          <div class="form-grid">
+            <label for="exportLayout">Layout</label>
+            <select id="exportLayout">
+              <option value="grid">Grid — one page/sheet per day</option>
+              <option value="schedule" selected>Class Schedule — list by day</option>
+            </select>
+            <label for="exportFont">Font</label>
+            <select id="exportFont">
+              <option value="Times New Roman" selected>Times New Roman</option>
+              <option value="Arial">Arial</option>
+              <option value="Calibri">Calibri</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Courier New">Courier New</option>
+            </select>
+            <label for="exportSize">Font size</label>
+            <select id="exportSize">
+              <option value="9">9</option>
+              <option value="10" selected>10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+            </select>
+            <label for="exportOrientation">Orientation</label>
+            <select id="exportOrientation">
+              <option value="landscape" selected>Landscape</option>
+              <option value="portrait">Portrait</option>
+            </select>
+            <label for="exportInstitution">Institution</label>
+            <input type="text" id="exportInstitution" maxlength="120" placeholder="e.g. University of Education">
+            <label for="exportTerm">Academic term</label>
+            <input type="text" id="exportTerm" maxlength="120" placeholder="e.g. Spring 2024">
+            <label for="exportProgram">Name of program</label>
+            <input type="text" id="exportProgram" maxlength="120" placeholder="e.g. BS Chemistry (Post ADP)">
+            <label for="exportSemester">Semester (as printed)</label>
+            <input type="text" id="exportSemester" maxlength="30" placeholder="e.g. 4">
+            <label for="exportCommencement">Commencement of classes</label>
+            <input type="text" id="exportCommencement" maxlength="120" placeholder="e.g. January 2024">
+          </div>
+          <div class="export-include">
+            <label class="checkline"><input type="checkbox" id="exportShowSummary" checked> Summary sheet</label>
+            <label class="checkline"><input type="checkbox" id="exportShowByTeacher" checked> By Teacher sheet</label>
+            <label class="checkline"><input type="checkbox" id="exportShowUnscheduled" checked> Unscheduled list</label>
+            <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
+          </div>
+          <p class="export-preview-wrap">
+            <span class="export-preview-label">Preview on the printed export</span>
+            <code id="exportPreview" class="export-preview" aria-live="polite"></code>
+          </p>
+          <p class="muted">Courses with <strong>0 credit hours</strong> are written as <em>non-credited course</em> in the C.Hrs column. The fields above appear on the title block of the Class Schedule / grid export.</p>
+        </fieldset>
+
         <div class="publish-actions">
+          <button type="button" class="btn btn-accent" id="publishExcelBtn">Export Excel</button>
+          <button type="button" class="btn" id="publishCsvBtn">Export CSV</button>
           <button type="button" class="btn btn-primary" id="publishPdfBtn">Download PDF</button>
           <button type="button" class="btn" id="publishIcsBtn">Download .ics</button>
           <button type="button" class="btn" id="publishCopyBtn">Copy subscription link</button>
