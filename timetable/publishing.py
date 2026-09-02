@@ -380,68 +380,6 @@ def _draw_schedule_table(
     rows: list[dict[str, Any]],
     footer: str,
 ) -> None:
-    """Printed Class Schedule: metadata block plus day-grouped vertical rows."""
-    margin = 28.0
-    top = margin + 46
-    pdf.text(margin, margin + 14, _fit(title, 15, pdf.width - 2 * margin, True, pdf.font),
-             size=15, bold=True, color=(0.17, 0.20, 0.40))
-    if subtitle:
-        pdf.text(margin, margin + 29, _fit(subtitle, 9, pdf.width - 2 * margin, False, pdf.font),
-                 size=9, color=GREY_TEXT)
-
-    headers = ["Days", "Course Code", "Course Title", "C.Hrs", "Students", "Teacher's Name", "Time", "Room No"]
-    usable = pdf.width - 2 * margin
-    widths = [0.09, 0.14, 0.26, 0.09, 0.08, 0.18, 0.10, 0.06]
-    scaled = [w * usable for w in widths]
-    x0 = margin
-    header_height = 22.0
-    row_height_limit = pdf.height - top - margin - 18
-    row_height = min(26.0, max(18.0, row_height_limit / max(1, len(rows))))
-    header_y = top
-
-    # title block band
-    pdf.rect(margin, top - header_height, usable, row_height_limit + header_height,
-             fill=(0.93, 0.95, 0.98), stroke=None)
-
-    # header
-    pdf.rect(margin, top, usable, header_height, fill=HEADER_BLUE)
-    cx = x0
-    for index, heading in enumerate(headers):
-        w = scaled[index]
-        pdf.text_centre(cx + w / 2, top + 14, _fit(heading, 8.5, w - 6, True, pdf.font),
-                        size=8.5, bold=True, color=(1, 1, 1))
-        cx += w
-
-    current_day: int | None = None
-    band = (1, 1, 1)
-    y = top + header_height
-    for entry in rows:
-        if entry["day"] != current_day:
-            current_day = entry["day"]
-            band = SCHEDULE_DAY_FILLS.get(current_day, BAND)
-        pdf.rect(margin, y, usable, row_height, fill=band, stroke=GRID_LINE)
-        cx = x0
-        cells = entry["cells"]
-        for index, value in enumerate(cells):
-            w = scaled[index]
-            pdf.text(cx + 4, y + row_height / 2 + 3,
-                     _fit(value, 8.5, w - 8, index == 0, pdf.font),
-                     size=8.5, bold=False, color=(0.09, 0.13, 0.24))
-            cx += w
-        y += row_height
-
-    baseline = y + 14
-    pdf.text(margin, min(baseline, pdf.height - margin + 6), footer, size=7.5, color=GREY_TEXT)
-
-
-def _draw_schedule_table(
-    pdf: PdfCanvas,
-    *,
-    title: str,
-    subtitle: str,
-    rows: list[dict[str, Any]],
-    footer: str,
-) -> None:
     """Printed class schedule: a metadata block then day-grouped vertical rows.
 
     ``rows`` is a list of ``{"day": int, "cells": [8 strings]}`` already sorted
@@ -457,7 +395,7 @@ def _draw_schedule_table(
 
     headers = ["Days", "Course Code", "Course Title", "C.Hrs", "Students", "Teacher's Name", "Time", "Room No"]
     usable = pdf.width - 2 * margin
-    widths = [0.09, 0.14, 0.26, 0.09, 0.08, 0.18, 0.10, 0.06]
+    widths = [0.08, 0.12, 0.23, 0.12, 0.07, 0.16, 0.16, 0.06]
     scaled = [w * usable for w in widths]
     x0 = margin
     header_height = 22.0
@@ -496,63 +434,6 @@ def _draw_schedule_table(
 
     baseline = y + 14
     pdf.text(margin, min(baseline, pdf.height - margin + 6), footer, size=7.5, color=GREY_TEXT)
-
-
-def _build_schedule_pdf(
-    entries: list[dict[str, Any]],
-    *,
-    days: int = 5,
-    title: str = "Class Schedule",
-    font_name: str = "Times New Roman",
-    institution: str = "",
-    term: str = "",
-    program: str = "",
-    commencement: str = "",
-    semester: str = "",
-) -> bytes:
-    """The printed Class Schedule as a single landscape page."""
-    pdf = PdfCanvas(*A4_LANDSCAPE, font=_font_key(font_name))
-    stamp = datetime.now().strftime("%d %b %Y %H:%M")
-    heading = str(title or "Class Schedule")
-    if term:
-        heading = f"{heading} {term}"
-
-    # subtitle: institution · program · Commencement · Semester
-    parts = [p for p in [institution, program, commencement, semester] if p]
-    subtitle = " · ".join(parts)
-    if not entries:
-        pdf.text(40, 60, heading, size=16, bold=True)
-        pdf.text(40, 82, "There is nothing scheduled yet.", size=10, color=GREY_TEXT)
-        return pdf.build(heading)
-
-    ordered = sorted(entries, key=lambda e: (int(e["day"]), to_minutes(e["start_time"]), str(e.get("code", ""))))
-    rows = []
-    for entry in ordered:
-        credits = int(entry.get("credit_hours") or 0)
-        rows.append(
-            {
-                "day": int(entry["day"]),
-                "cells": [
-                    WEEKDAYS[int(entry["day"]) - 1],
-                    str(entry.get("code") or ""),
-                    str(entry.get("course_name") or ""),
-                    NON_CREDITED_LABEL if credits == 0 else str(credits),
-                    str(entry.get("num_students") or ""),
-                    str(entry.get("instructor") or "Unassigned"),
-                    format_time_range(str(entry.get("start_time", "")), str(entry.get("end_time", ""))),
-                    str(entry.get("room_number") or entry.get("room_label") or ""),
-                ],
-            }
-        )
-
-    _draw_schedule_table(
-        pdf,
-        title=heading,
-        subtitle=f"{subtitle} · {len(rows)} class(es)" if subtitle else f"{len(rows)} class(es)",
-        rows=rows,
-        footer=f"Generated {stamp} by Automated Timetable Generator",
-    )
-    return pdf.build(heading)
 
 
 def _entry_cell(entry: dict[str, Any], *, show_room: bool = True, show_section: bool = True) -> dict[str, Any]:

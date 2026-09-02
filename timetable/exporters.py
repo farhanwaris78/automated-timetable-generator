@@ -52,14 +52,15 @@ def _class_label(entry: dict[str, Any]) -> str:
 
 
 def format_time_range(start: str, end: str) -> str:
-    """Compact 12-hour range used by the Class Schedule layout, e.g. \"2:30-4:00\"."""
-    def compact(value: str) -> str:
+    """12-hour range complete with AM/PM, e.g. \"2:30 PM - 4:00 PM\"."""
+    def twelve(value: str) -> str:
         total = to_minutes(value)
         hour, minute = divmod(total, 60)
+        suffix = "AM" if hour < 12 else "PM"
         display = hour % 12 or 12
-        return f"{display}:{minute:02d}"
+        return f"{display}:{minute:02d} {suffix}"
 
-    return f"{compact(start)}-{compact(end)}"
+    return f"{twelve(start)} - {twelve(end)}"
 
 
 # One pastel band per weekday, matching the reference Class Schedule sheet.
@@ -620,7 +621,7 @@ def build_class_schedule_workbook(
         blank_rows += 1
 
     # ---- column widths ---------------------------------------------------- #
-    widths = [12, 14, 32, 18, 16, 24, 15, 10]
+    widths = [12, 14, 30, 18, 16, 24, 18, 10]
     for column, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(column)].width = width
     sheet.freeze_panes = sheet.cell(row=header_row + 1, column=2)

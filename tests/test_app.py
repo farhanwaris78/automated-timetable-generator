@@ -291,7 +291,7 @@ def test_database_failure_is_reported_gracefully(tmp_path):
 # v2.1 - catalogue management, shifts, auto-fill, Excel export
 # =========================================================================== #
 from timetable.catalog import CatalogService  # noqa: E402
-from timetable.exporters import build_workbook, openpyxl_available  # noqa: E402
+from timetable.exporters import build_workbook, format_time_range, openpyxl_available  # noqa: E402
 
 
 @pytest.fixture()
@@ -1156,6 +1156,16 @@ def test_the_shortcut_hints_are_no_longer_printed_on_the_controls():
 # ======================= v2.4: Class Schedule printed list ===================== #
 
 
+@pytest.mark.parametrize("start,end,expected", [
+    ("14:30", "16:00", "2:30 PM - 4:00 PM"),
+    ("08:30", "09:50", "8:30 AM - 9:50 AM"),
+    ("00:00", "12:00", "12:00 AM - 12:00 PM"),
+    ("23:00", "23:30", "11:00 PM - 11:30 PM"),
+])
+def test_format_time_range_uses_am_pm(start, end, expected):
+    assert format_time_range(start, end) == expected
+
+
 def _schedule_entries():
     """A tiny timetable including a zero-credit (Non-credited) course."""
     return [
@@ -1228,7 +1238,7 @@ def test_class_schedule_layout_matches_the_reference():
     assert sheet.cell(row=mon, column=1).value == "Monday"
     assert sheet.cell(row=mon, column=2).value == "CHEM4134"
     assert sheet.cell(row=mon, column=4).value == "3"           # credit hours
-    assert sheet.cell(row=mon, column=7).value == "2:30-4:00"   # compact 12h range
+    assert sheet.cell(row=mon, column=7).value == "2:30 PM - 4:00 PM"   # AM/PM 12h range
     assert sheet.cell(row=mon, column=8).value == "105"
 
     # Non-credited course (credit hours == 0)
