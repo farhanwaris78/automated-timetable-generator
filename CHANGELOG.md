@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.6 - 2026-09-02
+
+- **Semester manager** — new **+ Semester** toolbar button and a **Semesters** tab
+  under *Manage data*: rename the preset semesters 1–8, add more when needed,
+  and set the order used by filters and exports.
+- **Complete tutorial** — offline, scrollable in-app tutorial with highlighted
+  screenshots, plus the printable PDF tutorial.
+- Rebuilt and re-released for **Windows x64, Linux x64, macOS arm64 and macOS
+  x64** by the GitHub Actions build workflow.
+
 ## 2.0.4 — the semester book: free slots, load balancing, versioned exports and colour
 
 The export was rebuilt around the one thing a timetable is actually handed out
