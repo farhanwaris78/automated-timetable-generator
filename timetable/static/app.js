@@ -41,6 +41,8 @@
     { group: "Export", combo: "Ctrl+E", action: "exportExcel", label: "Export to Excel (one sheet per day)" },
     { group: "Export", combo: "Ctrl+Shift+P", action: "publish", label: "Publish: per-teacher / per-section PDF + calendar" },
     { group: "Export", combo: "Alt+P", action: "publish", label: "Publish (same dialog)" },
+    { group: "Export", combo: "Alt+D", action: "documentSettings", label: "Document: institution, program, term, semester" },
+    { group: "Export", combo: "Alt+Shift+R", action: "reports", label: "Reports: room utilisation / workload / clashes" },
     { group: "Export", combo: "Alt+V", action: "exportCsv", label: "Export to CSV" },
     { group: "Export", combo: "Ctrl+P", action: "print", label: "Print" },
 
@@ -81,8 +83,15 @@
     history: [],
     future: [],
     manageTab: "teachers",
+    reportScope: "utilisation",
+    dialogDirty: {},
     project: { name: "Untitled project", path: null, savedAt: null, recent: [], home: "", suffix: ".ttproj" },
-    fs: { cwd: "", mode: "open", selected: null, newFolder: false, writable: true, roots: [], places: [], files: [], dirs: [] }
+    fs: { cwd: "", mode: "open", selected: null, newFolder: false, writable: true, roots: [], places: [], files: [], dirs: [] },
+    exportOptions: {
+      layout: "schedule", fontName: "Times New Roman", fontSize: 10, orientation: "landscape",
+      institution: "", term: "", program: "", semester: "", commencement: "",
+      showSummary: true, showByTeacher: true, showUnscheduled: true, showSemesters: true
+    }
   };
 
   var uidSeq = 1;
@@ -229,23 +238,77 @@
     var dialog = $(id);
     if (!dialog) return;
     dialog.hidden = false;
+    if (isDirtyGuarded(dialog)) dialog._initial = snapshotDialog(dialog);
     var focusable = dialog.querySelector("input:not([type=hidden]), select, textarea, button");
     if (focusable) window.setTimeout(function () { focusable.focus(); }, 30);
   }
 
-  function closeDialogs() { $$(".dialog").forEach(function (dialog) { dialog.hidden = true; }); }
+  function forceCloseDialogs() {
+    $$(".dialog").forEach(function (dialog) { dialog.hidden = true; dialog._initial = null; });
+  }
+
+  /* Warning before leaving a dialog with unsaved edits.  Only the edit
+     dialogs (teacher / room / course / building / section / document) are
+     guarded: they are the ones where a stray close throws away typing. */
+  var DIRTY_GUARDED = ["#teacherDialog", "#roomDialog", "#courseFormDialog",
+    "#buildingDialog", "#sectionDialog", "#documentDialog"];
+
+  function isDirtyGuarded(dialog) {
+    return DIRTY_GUARDED.indexOf("#" + dialog.id) !== -1;
+  }
+
+  function snapshotDialog(dialog) {
+    return $$("input:not([type=hidden]), select, textarea", dialog)
+      .map(function (field) {
+        return field.type === "checkbox" ? (field.checked ? "1" : "0") : field.value;
+      })
+      .join("\u0001");
+  }
+
+  function dialogChanged(dialog) {
+    return dialog._initial !== undefined && dialog._initial !== null &&
+      snapshotDialog(dialog) !== dialog._initial;
+  }
+
+  function openDirtyGuardedDialog() {
+    var open = $$(".dialog").filter(function (dialog) { return !dialog.hidden && isDirtyGuarded(dialog); });
+    for (var i = 0; i < open.length; i++) if (dialogChanged(open[i])) return open[i];
+    return null;
+  }
+
+  /* Mark a guarded dialog as clean (used right after it is saved). */
+  function markDialogClean(id) {
+    var dialog = $(id);
+    if (dialog) dialog._initial = snapshotDialog(dialog);
+  }
+
+  function closeDialogs() {
+    var dirty = openDirtyGuardedDialog();
+    if (dirty) {
+      confirmAction(
+        "Discard your changes?",
+        "You have unsaved edits in this dialog. Leaving will throw them away.",
+        function () { forceCloseDialogs(); },
+        "Discard changes",
+        function () { $("#confirmDialog").hidden = true; }   // keep editing
+      );
+      return;
+    }
+    forceCloseDialogs();
+  }
 
   /* In-app confirmation. window.confirm() is blocked by some desktop webviews
      (and cannot be styled), so every destructive action routes through this. */
-  function confirmAction(title, message, onYes, confirmLabel) {
+  function confirmAction(title, message, onYes, confirmLabel, onNo) {
     $("#confirmTitle").textContent = title;
     $("#confirmMessage").textContent = message;
     var yes = $("#confirmYes");
     yes.textContent = confirmLabel || "Yes, continue";
     var fresh = yes.cloneNode(true);          // drop any previous handler
     yes.parentNode.replaceChild(fresh, yes);
-    fresh.addEventListener("click", function () { closeDialogs(); onYes(); });
-    $("#confirmNo").onclick = closeDialogs;
+    fresh.addEventListener("click", function () { forceCloseDialogs(); onYes(); });
+    var no = $("#confirmNo");
+    no.onclick = function () { if (onNo) onNo(); else forceCloseDialogs(); };
     openDialog("#confirmDialog");
     window.setTimeout(function () { fresh.focus(); }, 30);
   }
@@ -308,6 +371,12 @@
   }
 
   function isLab(item) { return (item && item.kind) === "lab"; }
+
+  /* A 0-credit course is labelled "non-credited course" everywhere (exports
+     and the on-screen grid) so nobody mistakes it for a regular credit class. */
+  function isNonCredited(course) {
+    return course && (Number(course.credit_hours) === 0 || Number(course.lab_credit_hours) === 0);
+  }
 
   function classLabel(course, section, kind) {
     return (course && course.name ? course.name : "Course") + " - " + section + (kind === "lab" ? " (Lab)" : "");
@@ -466,6 +535,7 @@
       if (course.code) title.appendChild(el("span", "cc-code", course.code));
       title.appendChild(document.createTextNode(course.name + " - " + course.section));
       if (isLab(course)) title.appendChild(el("span", "kind-chip", "LAB"));
+      if (isNonCredited(course)) title.appendChild(el("span", "kind-chip chip-noncredit", "non-credited"));
       card.appendChild(title);
 
       var meta = el("div", "cc-meta");
@@ -778,6 +848,7 @@
     if (course.code) title.appendChild(el("span", "p-code", course.code));
     title.appendChild(document.createTextNode(course.name + " - " + placement.section));
     if (isLab(placement)) title.appendChild(el("span", "kind-chip", "LAB"));
+    if (isNonCredited(course)) title.appendChild(el("span", "kind-chip chip-noncredit", "non-credited"));
     node.appendChild(title);
     var meta = el("div", "p-meta");
     meta.appendChild(document.createTextNode((course.instructor || "Unassigned") +
@@ -1362,6 +1433,9 @@
     if (config.shiftHours && config.shiftHours.morning && config.shiftHours.evening) {
       state.shiftHours = config.shiftHours;
     }
+    if (config.export) {
+      state.exportOptions = Object.assign({}, state.exportOptions, config.export);
+    }
   }
 
   function saveToDatabase() {
@@ -1511,6 +1585,7 @@
     state.fs.mode = mode;
     state.fs.selected = null;
     state.fs.newFolder = false;
+    state.fs._fallbackIndex = 0;   // allow the read-only-folder fallback again
     $("#fsNewFolderRow").hidden = true;
     var sampleRow = $("#projectSampleRow");
     if (sampleRow) {
@@ -1520,6 +1595,10 @@
     }
     var preview = $("#fsSaveTarget");
     if (preview) preview.hidden = mode !== "saveAs";
+    // The project name is ALWAYS editable - it is the whole point of the dialog.
+    // Nothing should ever grey it out (that was a reported bug).
+    var nameInput = $("#projectNameInput");
+    if (nameInput) { nameInput.disabled = false; nameInput.readOnly = false; }
 
     var title = $("#projectDialogTitle");
     var primary = $("#projectPrimaryBtn");
@@ -1628,6 +1707,21 @@
         state.fs.writable = data.writable !== false;
         state.fs.roots = data.roots || state.fs.roots || [];
         state.fs.places = data.places || state.fs.places || [];
+        // A Save-as dialog that opens on a read-only folder greys out the Save
+        // button and leaves the user stuck.  Automatically jump to a writable
+        // place (Documents / Desktop / home) instead - the name stays editable
+        // and the user can always browse somewhere else.
+        if (state.fs.mode === "saveAs" && state.fs.writable === false) {
+          var candidates = [];
+          (state.fs.places || []).forEach(function (place) { candidates.push(place.path); });
+          if (state.project.home) candidates.push(state.project.home);
+          var attempt = state.fs._fallbackIndex || 0;
+          if (attempt < candidates.length && candidates[attempt] && candidates[attempt] !== data.path) {
+            state.fs._fallbackIndex = attempt + 1;
+            toast("Folder is read-only", "Showing a writable folder instead.", "warning");
+            return loadFsList(candidates[attempt]);
+          }
+        }
         renderFsBreadcrumbs(data);
         renderFsPlaces();
         renderFsList(data);
@@ -2038,10 +2132,121 @@
     return body;
   }
 
+  /* ---- export formatting options --------------------------------------- */
+  /* These are shown in the Export & share dialog and persisted server-side so
+     a font / orientation choice survives the next run. */
+  function readExportOptions() {
+    state.exportOptions = {
+      layout: $("#exportLayout").value || "schedule",
+      fontName: $("#exportFont").value || "Times New Roman",
+      fontSize: parseInt($("#exportSize").value, 10) || 10,
+      orientation: $("#exportOrientation").value || "landscape",
+      institution: $("#exportInstitution").value.trim(),
+      term: $("#exportTerm").value.trim(),
+      program: $("#exportProgram").value.trim(),
+      semester: $("#exportSemester").value.trim(),
+      commencement: $("#exportCommencement").value.trim(),
+      showSummary: $("#exportShowSummary").checked,
+      showByTeacher: $("#exportShowByTeacher").checked,
+      showUnscheduled: $("#exportShowUnscheduled").checked,
+      showSemesters: $("#exportShowSemesters").checked
+    };
+  }
+
+  function writeExportOptionsToForm() {
+    var o = state.exportOptions;
+    $("#exportLayout").value = o.layout || "schedule";
+    $("#exportFont").value = o.fontName || "Times New Roman";
+    $("#exportSize").value = String(o.fontSize || 10);
+    $("#exportOrientation").value = o.orientation || "landscape";
+    $("#exportInstitution").value = o.institution || "";
+    $("#exportProgram").value = o.program || "";
+    $("#exportSemester").value = o.semester || "";
+    $("#exportCommencement").value = o.commencement || "";
+    $("#exportTerm").value = o.term || "";
+    var seasonYear = parseSeasonYear(o.term || "");
+    if ($("#exportSeason")) $("#exportSeason").value = seasonYear.season;
+    if ($("#exportTermYear")) $("#exportTermYear").value = seasonYear.year;
+    $("#exportShowSummary").checked = !!o.showSummary;
+    $("#exportShowByTeacher").checked = !!o.showByTeacher;
+    $("#exportShowUnscheduled").checked = !!o.showUnscheduled;
+    $("#exportShowSemesters").checked = !!o.showSemesters;
+  }
+
+  /* Build the title-block sentence the printed export will show, and live-update
+     a small preview in the Export & share dialog so the document identity
+     fields (institution, term, program, semester, commencement) visibly work. */
+  function documentPreviewText() {
+    readExportOptions();
+    var o = state.exportOptions;
+    var title = o.layout === "schedule" ? "Class Schedule" : "University Timetable";
+    if (o.term) title += " " + o.term;
+    var parts = [];
+    if (o.institution) parts.push(o.institution);
+    if (o.program) parts.push("Name of program: " + o.program);
+    if (o.semester) parts.push("Semester: " + o.semester);
+    if (o.commencement) parts.push("Commencement: " + o.commencement);
+    return parts.length ? title + " — " + parts.join(" · ") : title;
+  }
+
+  function updateExportPreview() {
+    var text = documentPreviewText();
+    $$(".export-preview").forEach(function (preview) { preview.textContent = text; });
+  }
+
+  /* The term is a season dropdown + a year box + a free-text field.  The
+     dropdown and year are a shortcut: when either changes they rewrite the
+     free-text term ("Spring 2026"); typing the term directly still works. */
+  function parseSeasonYear(term) {
+    var match = String(term || "").trim().match(/^(Spring|Summer|Fall|Winter)\s+(\d{4})$/i);
+    if (!match) return { season: "", year: "" };
+    return { season: match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase(), year: match[2] };
+  }
+
+  function buildTermFromParts(season, year) {
+    var parts = [];
+    if (season) parts.push(season);
+    if (year) parts.push(year);
+    return parts.join(" ");
+  }
+
+  function syncTermFromParts() {
+    var season = $("#exportSeason") ? $("#exportSeason").value : "";
+    var year = $("#exportTermYear") ? $("#exportTermYear").value : "";
+    if (season && $("#exportTerm")) $("#exportTerm").value = buildTermFromParts(season, year);
+  }
+
+  function persistExportOptions() {
+    readExportOptions();
+    api("/api/settings", { method: "POST", body: { export: state.exportOptions } })
+      .catch(function () { /* non fatal */ });
+    updateExportPreview();
+  }
+
+  /* The option keys the Python export/publish endpoints expect. */
+  function exportStyleBody() {
+    readExportOptions();
+    return {
+      layout: state.exportOptions.layout,
+      font_name: state.exportOptions.fontName,
+      font_size: state.exportOptions.fontSize,
+      orientation: state.exportOptions.orientation,
+      institution: state.exportOptions.institution,
+      term: state.exportOptions.term,
+      program: state.exportOptions.program,
+      semester: state.exportOptions.semester,
+      commencement: state.exportOptions.commencement,
+      show_summary: state.exportOptions.showSummary,
+      show_by_teacher: state.exportOptions.showByTeacher,
+      show_unscheduled: state.exportOptions.showUnscheduled,
+      show_semesters: state.exportOptions.showSemesters
+    };
+  }
+
   function exportExcel() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
     toast("Building workbook", "One sheet per day and per semester…", "info", 2500);
-    runExport("/api/export/xlsx", exportBody({}), "timetable.xlsx",
+    runExport("/api/export/xlsx", exportBody(exportStyleBody()), "timetable.xlsx",
       "Excel exported — Summary, one sheet per day, one per semester, By Teacher.")
       .catch(function (err) { toast("Excel export failed", err.message, "error"); });
   }
@@ -2118,7 +2323,10 @@
     var select = $("#publishFilter");
     var scope = $("#publishScope").value;
     select.innerHTML = '<option value="">Everyone / everything</option>';
-    if (scope === "all") { select.disabled = true; updatePublishLink(); return; }
+    if (scope === "all" || scope === "schedule" || scope === "day" ||
+        scope === "utilisation" || scope === "workload" || scope === "conflict") {
+      select.disabled = true; updatePublishLink(); return;
+    }
     select.disabled = false;
 
     if (scope === "teacher") {
@@ -2170,6 +2378,13 @@
   }
 
   function updatePublishLink() {
+    var link = $("#publishLink");
+    // The standalone desktop window has no web feed to subscribe to - tell the
+    // user the calendar is exported as a file instead of showing a dead URL.
+    if (window.__NATIVE__) {
+      link.textContent = "This desktop build has no live web feed — use “Export calendar” to save the .ics file.";
+      return;
+    }
     var params = [];
     var filter = $("#publishFilter").value;
     if (filter) {
@@ -2179,7 +2394,7 @@
       });
     }
     params.push("weeks=" + (parseInt($("#publishWeeks").value, 10) || 16));
-    $("#publishLink").textContent = window.location.origin + "/calendar.ics?" + params.join("&");
+    link.textContent = window.location.origin + "/calendar.ics?" + params.join("&");
   }
 
   function openPublishDialog() {
@@ -2187,6 +2402,8 @@
       toast("Nothing to publish", "Schedule or load a timetable first.", "warning");
       return;
     }
+    writeExportOptionsToForm();
+    updateExportPreview();
     fillPublishFilter();
     openDialog("#publishDialog");
   }
@@ -2194,7 +2411,7 @@
   function publishPdf() {
     var scope = $("#publishScope").value;
     toast("Building PDF", "Laying out the pages…", "info", 2000);
-    runExport("/api/publish/pdf", publishBody({}), "timetable-" + scope + ".pdf", "PDF ready")
+    runExport("/api/publish/pdf", publishBody(exportStyleBody()), "timetable-" + scope + ".pdf", "PDF ready")
       .catch(function (err) { toast("PDF failed", err.message, "error"); });
   }
 
@@ -2216,6 +2433,94 @@
       try { document.execCommand("copy"); done(); } catch (err) { /* ignore */ }
       document.body.removeChild(field);
     }
+  }
+
+  /* ================== document identity + reports dialog ================== */
+  function openDocumentSettings() {
+    writeExportOptionsToForm();
+    updateExportPreview();
+    openDialog("#documentDialog");
+  }
+
+  function saveDocument() {
+    persistExportOptions();
+    markDialogClean("#documentDialog");
+    toast("Document saved", "Institution, program, term, semester and commencement are set.", "success");
+    closeDialogs();
+  }
+
+  /* The in-app Reports dialog shows the same numbers that go into the Excel
+     sheets and PDF pages, so the user can review a report before printing it. */
+  function openReportsDialog() {
+    if (!state.placements.length) {
+      toast("Nothing to report on", "Schedule or load a timetable first.", "warning");
+      return;
+    }
+    openDialog("#reportsDialog");
+    renderReport();
+  }
+
+  function reportPayload() {
+    return {
+      assignments: state.placements.map(toAssignment),
+      days: state.days,
+      shift: "all"
+    };
+  }
+
+  function renderReport() {
+    var host = $("#reportHost");
+    if (!host) return;
+    var scope = $("#reportScope").value;
+    host.innerHTML = '<p class="muted">Building the report…</p>';
+    api("/api/report/" + scope, { method: "POST", body: reportPayload() })
+      .then(function (report) {
+        host.innerHTML = "";
+        var head = el("div", "report-head");
+        head.appendChild(el("h4", null, report.title || ""));
+        head.appendChild(el("p", "muted", report.note || ""));
+        host.appendChild(head);
+
+        if (!report.rows || !report.rows.length) {
+          host.appendChild(el("p", "muted", "Nothing to report — no issues found."));
+          return;
+        }
+        var table = el("table", "mini-table report-table");
+        var thead = el("tr");
+        report.headers.forEach(function (heading) { thead.appendChild(el("th", null, heading)); });
+        table.appendChild(thead);
+        report.rows.forEach(function (row, index) {
+          var tr = el("tr");
+          tr.classList.add(index % 2 ? "even" : "odd");
+          row.forEach(function (cell, column) {
+            tr.appendChild(el("td", (column === 0 || column === row.length - 1) ? "strong" : null,
+              cell === null || cell === undefined ? "" : String(cell)));
+          });
+          table.appendChild(tr);
+        });
+        host.appendChild(table);
+      })
+      .catch(function (err) { host.innerHTML = '<p class="import-error">' + escapeHtml(err.message) + "</p>"; });
+  }
+
+  function exportReportPdf() {
+    var scope = $("#reportScope").value;
+    toast("Building report PDF", "Laying out one page…", "info", 2000);
+    runExport("/api/publish/pdf", publishBody(Object.assign({ scope: scope }, reportPayload())),
+      "report-" + scope + ".pdf", "Report PDF ready")
+      .catch(function (err) { toast("Report PDF failed", err.message, "error"); });
+  }
+
+  function exportReportExcel() {
+    if (!state.placements.length) { toast("Nothing to report on", "Schedule at least one class first.", "warning"); return; }
+    toast("Building workbook", "Includes Room Utilisation, Teacher Workload and Conflict Report…", "info", 2500);
+    // Force the grid layout so the workbook is guaranteed to carry all three
+    // report sheets whatever layout happens to be selected in Publish.
+    var body = exportBody(exportStyleBody());
+    body.layout = "grid";
+    runExport("/api/export/xlsx", body, "timetable.xlsx",
+      "Excel exported — including the three report sheets.")
+      .catch(function (err) { toast("Excel export failed", err.message, "error"); });
   }
 
   /* ========================= import from Excel ============================ */
@@ -2286,7 +2591,7 @@
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
     // Built server-side so the CSV matches the workbook column-for-column and
     // can be written straight into the project folder.
-    runExport("/api/export/csv", exportBody({}), "timetable.csv", "CSV exported")
+    runExport("/api/export/csv", exportBody(exportStyleBody()), "timetable.csv", "CSV exported")
       .catch(function (err) { toast("CSV export failed", err.message, "error"); });
   }
 
@@ -2367,6 +2672,7 @@
     };
     api(id ? "/api/instructors/" + id : "/api/instructors", { method: id ? "PUT" : "POST", body: body })
       .then(function (teacher) {
+        markDialogClean("#teacherDialog");
         closeDialogs();
         toast(id ? "Teacher updated" : "Teacher added", teacher.name, "success");
         return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
@@ -2396,6 +2702,7 @@
     };
     api(id ? "/api/rooms/" + id : "/api/rooms", { method: id ? "PUT" : "POST", body: body })
       .then(function () {
+        markDialogClean("#roomDialog");
         closeDialogs();
         toast(id ? "Room updated" : "Room added", body.room_number, "success");
         return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
@@ -2418,6 +2725,7 @@
       body: { name: $("#buildingName").value }
     })
       .then(function (building) {
+        markDialogClean("#buildingDialog");
         closeDialogs();
         toast(id ? "Building renamed" : "Building added", building.name, "success");
         return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
@@ -2472,6 +2780,7 @@
     };
     api(id ? "/api/courses/" + id : "/api/courses", { method: id ? "PUT" : "POST", body: body })
       .then(function (course) {
+        markDialogClean("#courseFormDialog");
         closeDialogs();
         toast(id ? "Course updated" : "Course added", course.code + " " + course.name, "success");
         return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
@@ -2511,6 +2820,7 @@
       body: { section: section, instructor_id: teacherId || null }
     })
       .then(function () {
+        markDialogClean("#sectionDialog");
         closeDialogs();
         toast("Section added", "Section " + section + " is ready to drag onto the grid.", "success");
         return refreshCatalogue().then(function () { if (!$("#manageDialog").hidden) renderManage(); });
@@ -2547,7 +2857,7 @@
       thead.appendChild(headRow);
       element.appendChild(thead);
       var tbody = el("tbody");
-      rows.forEach(function (row) { tbody.appendChild(row); });
+      rows.forEach(function (row) { row.tabIndex = 0; tbody.appendChild(row); });
       element.appendChild(tbody);
       return rows.length ? element : el("p", "muted", "Nothing here yet.");
     }
@@ -2809,6 +3119,9 @@
     autofill: autofill,
     exportExcel: exportExcel,
     publish: openPublishDialog,
+    documentSettings: openDocumentSettings,
+    saveDocument: saveDocument,
+    reports: openReportsDialog,
     importData: openImportDialog,
     exportCsv: exportCsv,
     print: function () { buildPrintable(); window.print(); },
@@ -2880,6 +3193,27 @@
   }
 
   /* -------------------------------- startup ------------------------------- */
+  /* Arrow-key / Home / End navigation across a focusable list of rows, so the
+     Manage tables and the in-app file browser are fully keyboard-driveable:
+     move row-to-row, then Tab to the row's Edit / Delete / Open buttons. */
+  function wireListKeyboard(container, rowSelector) {
+    if (!container) return;
+    container.addEventListener("keydown", function (event) {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" &&
+          event.key !== "Home" && event.key !== "End") return;
+      var rows = Array.prototype.slice.call(container.querySelectorAll(rowSelector))
+        .filter(function (row) { return !row.hidden && row.offsetParent !== null && row.tabIndex === 0; });
+      var index = rows.indexOf(document.activeElement);
+      if (index === -1) return;          // not on a row (e.g. the search box) - let the browser act
+      var next = null;
+      if (event.key === "ArrowDown") next = rows[Math.min(rows.length - 1, index + 1)];
+      else if (event.key === "ArrowUp") next = rows[Math.max(0, index - 1)];
+      else if (event.key === "Home") next = rows[0];
+      else if (event.key === "End") next = rows[rows.length - 1];
+      if (next) { event.preventDefault(); next.focus(); }
+    });
+  }
+
   /* Dragging a scheduled class back to the sidebar unschedules it.  Same
      dragenter/dragover pairing as the grid cells, for the same reason. */
   function wireSidebarDropZone() {
@@ -2948,12 +3282,38 @@
     $("#publishScope").addEventListener("change", fillPublishFilter);
     $("#publishFilter").addEventListener("change", updatePublishLink);
     $("#publishWeeks").addEventListener("input", updatePublishLink);
+    $("#publishExcelBtn").addEventListener("click", exportExcel);
+    $("#publishCsvBtn").addEventListener("click", exportCsv);
     $("#publishPdfBtn").addEventListener("click", publishPdf);
     $("#publishIcsBtn").addEventListener("click", publishIcs);
     $("#publishCopyBtn").addEventListener("click", copyPublishLink);
+    // Export formatting options are remembered, so the next export starts
+    // with the same font / orientation the user last picked.
+    ["#exportLayout", "#exportFont", "#exportSize", "#exportOrientation", "#exportInstitution", "#exportTerm",
+     "#exportProgram", "#exportSemester", "#exportCommencement", "#exportSeason", "#exportTermYear",
+     "#exportShowSummary", "#exportShowByTeacher", "#exportShowUnscheduled", "#exportShowSemesters"]
+      .forEach(function (selector) {
+        var field = $(selector);
+        if (field) {
+          field.addEventListener("change", persistExportOptions);
+          // Live preview while typing; change handles persistence on blur.
+          field.addEventListener("input", updateExportPreview);
+        }
+      });
+    // The season dropdown + year box are a shortcut for the free-text term:
+    // change either and the term is rebuilt, then the preview updates.
+    ["#exportSeason", "#exportTermYear"].forEach(function (selector) {
+      var field = $(selector);
+      if (field) field.addEventListener("change", function () { syncTermFromParts(); persistExportOptions(); });
+    });
 
     $("#downloadTemplateBtn").addEventListener("click", downloadTemplate);
     $("#runImportBtn").addEventListener("click", runImport);
+
+    // Reports dialog
+    $("#reportScope").addEventListener("change", renderReport);
+    $("#reportPdfBtn").addEventListener("click", exportReportPdf);
+    $("#reportExcelBtn").addEventListener("click", exportReportExcel);
 
     $$("#manageDialog .tab").forEach(function (tab) {
       tab.addEventListener("click", function () { openManage(tab.dataset.tab); });
@@ -3032,12 +3392,34 @@
     wireSidebarDropZone();
     decorateButtonTooltips();
     renderShortcutsDialog();
+
+    // Keyboard navigation for the Manage tables and the in-app file browser.
+    wireListKeyboard($("#managePanel"), "tbody tr");
+    wireListKeyboard($("#fsList"), ".fs-row");
   }
 
   function setStatus(text, kind) {
     var pill = $("#dbStatus");
     pill.textContent = text;
     pill.className = "pill " + (kind || "pill-muted");
+  }
+
+  function startProjectAutosave() {
+    /* Write a timestamped backup of the current project into its own
+       _backups folder every few minutes while there are unsaved edits, so a
+       crash never loses more than a few minutes of work.  The server keeps
+       only the newest few backups. */
+    window.setInterval(function () {
+      if (!state.project.path || !state.dirty) return;
+      api("/api/project/autosave", {
+        method: "POST",
+        body: { path: state.project.path, name: state.project.name }
+      }).then(function (result) {
+        if (result && result.ok && window.ttgDebugAutosave) {
+          toast("Backup saved", result.path || "a backup was written.", "success", 2500);
+        }
+      }).catch(function () { /* backups are best-effort; never interrupt work */ });
+    }, 4 * 60 * 1000);   // every 4 minutes
   }
 
   function boot() {
@@ -3070,6 +3452,7 @@
         }
       })
       .catch(function (err) { toast("Startup problem", err.message, "error", 10000); });
+    startProjectAutosave();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

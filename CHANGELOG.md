@@ -1,5 +1,72 @@
 # Changelog
 
+## 2.0.3 — reports, per-day schedules, documents & full keyboard accessibility
+
+The biggest change since 2.0.2: the app can now *tell you what to fix* rather
+than just showing you a grid. Three printable reports, a dedicated Document
+dialog, a per-day printed schedule, automatic backups and a full accessibility
+pass round out the release.
+
+### Reports you can review before you print  📊
+
+A new **Reports** button (and <kbd>Alt+Shift+R</kbd>) opens all three reports
+on screen, and the same data goes into the Excel workbook **and** a PDF page:
+
+* **Room utilisation** — free vs. busy hours per room per week, flagging rooms
+  below 50% used as **Under-used**, so you can see which classrooms are paying
+  for themselves.
+* **Teacher workload** — contact hours per teacher per week, flagging
+  **Over-loaded** (> 20 h) and **Under-loaded** staff at a glance.
+* **Clashes to fix** — every conflict sorted by **severity** (errors first,
+  then warnings), deduplicated, each with a suggested fix: one printable
+  "what to fix" page.
+
+The Reports dialog lets you review the numbers on screen and then export them
+as a PDF or back to Excel. The Excel workbook is now **guaranteed** to carry all
+three report sheets whatever layout you pick in Publish.
+
+### Document identity in its own dialog  📝
+
+The institution, name of program, semester and commencement fields now live
+under a dedicated toolbar **Document** button (and <kbd>Alt+D</kbd>) instead of
+being buried inside *Publish*. The **term** is a season drop-down
+(Spring / Summer / Fall / Winter) **+ year + free text**, and a live preview of
+the document title block updates as you type.
+
+### A printed schedule you can actually hand out  🗓️
+
+* **Per-day list** — one landscape page **per weekday** with a big day header,
+  the classic printed class schedule split day by day.
+* **Class Schedule reference layout** — an exact-match printed layout for the
+  reference CSV, with **AM/PM** times and a widened *C.Hrs* column so the
+  `non-credited course` label always fits.
+
+### Safety & niceties  🛡️
+
+* **Never lose a few minutes again** — the app writes a timestamped backup of
+  the current project into a `_backups` folder beside the project file every
+  few minutes while there are unsaved edits (keeping the newest few).
+* **“file is in use”** — if the export target is still open in Excel (or any
+  program), the app now says so plainly instead of silently failing; nothing is
+  overwritten or lost.
+* **`non-credited` on screen** — a course with 0 credit hours wears a
+  “non-credited” chip on its card and grid cell, not just in exports.
+* **Warn before you lose typing** — leaving an edit dialog (teacher, room,
+  course, building, section, document) with unsaved changes asks *“Discard your
+  changes?”*.
+* **Full keyboard accessibility** — the Manage tables and the in-app file
+  browser are now fully keyboard-driveable (arrow keys, <kbd>Home</kbd>/<kbd>End</kbd>,
+  then <kbd>Tab</kbd> to each row's buttons).
+
+### Works standalone, no server  💻
+
+The desktop window still runs fully offline and serverless: the app serves its
+own UI to an embedded webview and keeps everything in a local SQLite database —
+no Python, no database server, no internet connection required.
+
+**Tests:** backend **157 passing** (was 140); frontend jsdom suites (drag & drop,
+project dialog, export dialog, document dialog) all green.
+
 ## 2.0.2 — drag & drop that works, save anywhere, blank new projects
 
 This release fixes the three things that stopped 2.0.1 from being usable for

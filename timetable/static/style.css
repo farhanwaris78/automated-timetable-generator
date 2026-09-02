@@ -793,6 +793,65 @@ body.is-carrying td.slot { cursor: copy; }
   .fs-places { max-height: 130px; }
 }
 
+/* Export & share dialog formatting options. */
+.export-options {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcff;
+}
+.export-options legend {
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--brand-dark);
+}
+.export-include {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.export-include .checkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* Live preview of the Class Schedule title block, so the document
+   identity fields are visibly doing something before the export. */
+.export-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 2px;
+  padding: 9px 12px;
+  border: 1px solid #d5dcf2;
+  border-radius: 8px;
+  background: #eef2ff;
+}
+.export-preview-label {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--brand-dark);
+}
+.export-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 /* New-project options: blank (default) vs the bundled sample university. */
 .project-sample-row {
   margin: 10px 0 4px;
@@ -839,4 +898,94 @@ body.is-carrying td.slot { cursor: copy; }
   border-radius: 5px;
   background: #f7f9ff;
   color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   v2.6: document dialog, reports dialog, non-credited chip, keyboard nav
+   ========================================================================== */
+
+/* The 0-credit "non-credited course" chip shown on the grid cards. */
+.chip-noncredit {
+  background: rgba(120, 80, 20, .85);
+  color: #ffe9c7;
+  letter-spacing: .02em;
+}
+
+/* Term dropdown + year + free text, laid out side by side. */
+.term-grid {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) 1.4fr;
+  gap: 8px;
+}
+
+/* A text-looking button used inside a hint paragraph (e.g. "set under
+   Document") - looks like a link but is a real button for keyboard users. */
+.link-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--brand-dark);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover { color: var(--brand); }
+
+/* Unsaved-change warning area in the document dialog. */
+.form-warnings {
+  min-height: 0;
+}
+.form-warnings:not(:empty) {
+  margin: 2px 0 6px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: #7a4d0d;
+  font-size: 12.5px;
+}
+
+/* The in-app Reports dialog. */
+.report-host {
+  margin-top: 10px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.report-head h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  color: var(--brand-dark);
+}
+.report-head p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.report-table { margin: 6px 0 10px; }
+.report-table th,
+.report-table td {
+  border-bottom: 1px solid var(--line);
+  padding: .4rem .5rem;
+  text-align: left;
+  font-size: .82rem;
+  white-space: nowrap;
+}
+.report-table td.strong { font-weight: 700; }
+.report-table tr.even td { background: #fafbff; }
+.report-table tbody tr:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* Make Manage-table rows visibly focusable so keyboard users know where they
+   are before they Tab on to the row's Edit / Delete buttons. */
+.manage-table tbody tr[tabindex="0"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  background: var(--brand-light);
+}
+
+.fs-row[role="option"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  background: #eef2ff;
 }

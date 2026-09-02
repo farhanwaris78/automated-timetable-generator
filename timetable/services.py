@@ -968,6 +968,8 @@ class TimetableService:
                         courses.c.color,
                         courses.c.department,
                         courses.c.semester,
+                        courses.c.credit_hours,
+                        courses.c.lab_credit_hours,
                     )
                 )
             }
@@ -1029,6 +1031,8 @@ class TimetableService:
                     "course_name": course.name if course else str(item.course_id),
                     "color": course.color if course else "#dddddd",
                     "department": course.department if course else "",
+                    "credit_hours": int(course.credit_hours or 0) if course else 0,
+                    "lab_credit_hours": int(course.lab_credit_hours or 0) if course else 0,
                     "section": item.section,
                     "instructor": teachers.get((item.course_id, item.section), "Unassigned"),
                     "num_students": headcount.get((item.course_id, item.section), 0),

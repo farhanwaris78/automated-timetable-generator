@@ -485,3 +485,37 @@ Three user-visible failures, plus everything found while fixing them.
 Rounds 1–5 total **57 defects**. The suite grew from 110 to **128 Python
 tests**, plus **22 front-end drag-and-drop checks** in `tests/frontend/` that
 fail against the 2.0.1 build.
+
+---
+
+## Round 6 — export style & the Save-As name box (fixed in this build)
+
+Two user-facing polish items.
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| 58 | `exporters.build_workbook` | **Not every cell used the chosen font.** Headers, titles and grid blocks were styled with a `Font(...)` factory, but body cells created by `cell(value=...)` inherited openpyxl's template default (Calibri), so a workbook that should have read “all Times New Roman” still had Calibri in the Summary / By Teacher / Unscheduled body. | A final sweep forces the configured font onto any cell still carrying the template default. The workbook's `Normal` style is set too, so cells a user adds later match. |
+| 59 | `exporters` / `publishing` / `web` | Exports had no font, orientation, institution or term options — the user asked for a Times New Roman look plus “all the other features”. | `build_workbook`, `build_pdf` and the front end now take `font_name`, `font_size`, `orientation`, `institution`, `term` and per-sheet visibility flags (`show_summary`, `show_by_teacher`, `show_unscheduled`, `show_semesters`), surfaced in a **Formatting** panel in the *Export & share* dialog and remembered between sessions. |
+| 60 | `web.api_get_settings` / `api_set_settings` | Grid preferences and the export style were stored under one key, so editing one clobbered the other. | The export style is saved separately as the `export` setting; `/api/settings` merges it into the response only when present. |
+| 61 | `publishing.build_pdf` | PDF characters were always Helvetica, so a “Times New Roman” PDF still rendered in Helvetica. | `PDF_FONTS` maps Times New Roman/Georgia → `/Times-Roman` and Arial/Calibri → `/Helvetica` (Courier New → `/Courier`), with a matching width table, so the PDF really uses Times without embedding a font file. |
+| 62 | `static/app.js` — project dialog | **Save-As name box appeared greyed out and couldn't be typed into** (a reported bug), and a Save-As that opened on a read-only folder disabled the Save button with no way forward. | The project-name input is forced enabled/editable whenever the dialog opens, and a Save-As that lands on a read-only folder automatically hops to a writable place (Documents / Desktop / home) instead of stranding the user. |
+
+The Python suite is now **129 tests**; the front-end suite is **22 checks**.
+
+---
+
+## Round 7 — printed "Class Schedule" export & a truly standalone desktop build
+
+The user supplied a reference CSV / image of a printed classroom timetable and
+asked for a matching export, automatic wording for zero-credit courses, and a
+real desktop application that does **not** run a backend server.
+
+| # | Where | Problem | Fix |
+|---|---|---|---|
+| 63 | `exporters.build_workbook` | The workbook was always the room × time grid (one sheet per day plus roll-ups); there was no way to get the flat, day-grouped printed list from the reference. | New `layout="schedule"` renderer (`build_class_schedule_workbook`) produces a single **Class Schedule** sheet: a merged metadata block (institution, “Name of program”, “Semester”, “Commencement of Classes”), an 8-column header (*Days, Course Code, Course Title, C.Hrs, Total No.of Students, Teacher's Name, Time, Room No*) and day-grouped rows with the Day cell merged vertically and painted a pastel band per weekday. |
+| 64 | `exporters.build_class_schedule_workbook` | A class with `credit_hours == 0` printed a blank or a bare `0` credit column. | When credit hours are zero the C.Hrs cell now prints **“non-credited course”** automatically (shared `NON_CREDITED_LABEL`), in a warning colour. |
+| 65 | `publishing.build_pdf` | The PDF only had the grid scopes (all / teacher / section / room / semester). | `layout="schedule"` renders the same printed list as a single landscape page (`_build_schedule_pdf` + `_draw_schedule_table`), reusing the same day bands and the same non-credited label. |
+| 66 | `web` / UI | There was no way to set the layout, program, semester label or commencement date, and the publish dialog had no “Class Schedule” scope. | `_export_style` carries `layout`/`program`/`commencement`/`semester`; the export dialog gained a **Layout** dropdown and Program / Semester / Commencement fields; `publishScope` includes **Class Schedule**. |
+| 67 | `desktop.serve_native` | The native pywebview window still booted a waitress/Werkzeug backend on a local port and drove the UI over HTTP. | The window is now fully serverless: the UI is delivered as one self-contained HTML document (template + inlined CSS/JS) and every API call is bridged straight into the running process through pywebview's JS↔Python API (`_NativeBridge` reuses the Flask app via its test client, including binary exports and Excel import). No port, no waitress worker, no browser tab. |
+
+The Python suite is now **136 tests**; the front-end suite is **22 checks**.
