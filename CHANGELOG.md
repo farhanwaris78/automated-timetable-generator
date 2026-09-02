@@ -1,5 +1,162 @@
 # Changelog
 
+## 2.0.4 — the semester book: free slots, load balancing, versioned exports and colour
+
+The export was rebuilt around the one thing a timetable is actually handed out
+as — **a batch's week** — and then given the three sheets a coordinator reaches
+for next: where a class can go, who should take it, and what changed since the
+last export. Two rounds of work in one release: **2.1.0 and 2.2.0 were never
+published**, so everything in them lands here as 2.0.4.
+
+### One sheet per semester, arranged like the printed Class Schedule  📗
+
+* **Semester 1 … Semester *n*** — one worksheet per semester, using exactly the
+  reference columns *Days, Course Code, Course Title, C.Hrs, Total No.of
+  Students, Teacher's Name, Time, Room No*, rows grouped by day with the day
+  cell merged down its block and painted the day's pastel band, AM/PM times,
+  and **non-credited course** for anything with 0 credit hours.
+* Each semester sheet ends with a **totals strip**: classes, credit hours,
+  contact hours per week, sections, teachers and non-credited count.
+* **Monday … Sunday** sheets use the same eight columns, grouped by
+  *semester · section*, so a batch's whole day reads straight down one page. An
+  empty weekday says so instead of printing a blank grid.
+* **By Teacher** is now grouped and merged per teacher, in the same column set
+  (with *Day* in place of the repeated teacher name).
+* The old layouts did not disappear: **Class Schedule** still gives a single
+  printed page, and **Grid** still gives the room × time facilities view.
+  *Semester book* is the new default everywhere — the dialog, the API and the
+  desktop window.
+
+### New sheets that answer the questions the grid cannot  📊
+
+* **Contents** — a hyperlinked index of every sheet with its class count and a
+  one-line description; click a name to jump there.
+* **Credit Hour Audit** — per course-section, the catalogue's planned credit
+  hours against the contact hours the grid actually books, the difference, and
+  a status: `Complete`, `Short 1.5 h`, `Extra 0.5 h`, `Not scheduled` or
+  `Non-credited`. This is the sheet that catches a 3-credit course quietly
+  taught for 80 minutes a week.
+* **Dashboard** — the week at a glance (classes, contact hours, credit hours,
+  sections, teachers, rooms, non-credited, unscheduled, clashes) plus two real
+  Excel bar charts: room utilisation and teacher contact hours.
+* **Master Data** — the courses, teachers and rooms behind the grid, each with
+  their load, so the workbook is self-describing when it leaves your hands.
+
+### Free Slots — where a class can go  🟩
+
+A green/amber matrix per batch: one row per weekday, one column per slot.
+
+* **Green "free"** — that batch has nothing in that slot.
+* **Amber** — already booked, showing the course code that is blocking it.
+* **Red "no room"** — the batch is free but *every* room is already taken, so
+  the slot is not actually usable. This is the case that wastes a coordinator's
+  time, and it is now visible at a glance.
+* A **Free slots** count per day, and a second table — **Free rooms at each
+  slot** — naming the free rooms and their total seats, so placing the class
+  needs no further looking-up.
+* Times overlap properly: a 90-minute lab counts against every slot it touches.
+
+### Load Balancing — who should take it  ⚖️
+
+A concrete, printable list of moves instead of a workload table you have to
+reason about yourself:
+
+> *Dr A (22.0 h) — move CS3009 Artificial Intelligence, Section A, Monday
+> 8:30 AM → **Dr B** (4.0 h) — after the move 20.0 h / 6.0 h*
+
+A suggestion is only made when the receiving teacher is **free at exactly that
+day and time** and would end up **no busier than the giver**, so every move
+shrinks the spread. Moves are applied tentatively as they are listed, so two
+suggestions never assume the same free hours. The same report is available in
+the **Reports** dialog and at `POST /api/report/balance`.
+
+### Versioned exports — `Spring 2026-rev3.xlsx`  🔢
+
+`timetable (2).xlsx` told you nothing about which copy was current. Exports are
+now numbered by what is already in the folder:
+
+* `Spring 2026-rev1.xlsx`, `-rev2`, `-rev3` … — nothing is ever overwritten, and
+  two people exporting into the same shared folder cannot collide.
+* The file name comes from the new **Export file name** field in the Document
+  panel (falling back to the project name, then `timetable`).
+* A new **Revisions** sheet, second in the workbook, carries the revision
+  history (rev, file, date, classes, size — the current one highlighted) and a
+  **What changed since `Spring 2026-rev2.xlsx`** list:
+  `Added` (green), `Removed` (red), `Moved`, `Room changed`, `Teacher changed`
+  (amber).
+* The change list is real: the previous revision's Summary sheet is read back
+  out of the file and diffed. Two weekly meetings of the same course are tracked
+  separately, so moving one is not reported as moving both.
+* Switch it off with the **Versioned file names** checkbox to get the old
+  Explorer-style `(2)` numbering back.
+
+### A colour language, not decoration  🎨
+
+Colours now mean the same thing on every sheet:
+
+| Colour | Meaning |
+|---|---|
+| The course's own colour | identity — the same colour the class wears on the grid, lightened so black text stays readable. Applied to the Course Title on the semester, weekday, teacher, Summary and Master Data sheets |
+| Pastel per weekday | day grouping on the semester sheets and the Contents page |
+| Green | free / balanced / complete / a suggested move / the current revision |
+| Amber | needs a look: short on hours, under-used, evening shift, non-credited, a move or a re-rooming |
+| Red | stop: a clash, a class with no room, not scheduled, over-loaded |
+| Tab colour | semester sheets green, weekday sheets violet, By Teacher amber, reports red — and the Contents page repeats it as a light wash per row |
+
+### Everything reads like one document  🖨️
+
+* Every sheet carries the same **title block** (institution, name of program,
+  semester, commencement), repeats its header row on each printed page, fits
+  one page wide, and puts **"Page *n* of *N*"** in the footer.
+* Sheet tabs are **colour-coded by kind** — Contents navy, semester sheets
+  green, weekday sheets violet, By Teacher amber, reports red.
+* The **Summary** sheet gains a *C.Hrs* column and keeps its auto-filter; report
+  sheets now tint their status column (errors red, warnings amber, healthy
+  green) and are filterable.
+* The workbook's **document properties** (title, author, subject, keywords) are
+  filled in, so it is identifiable in a file manager or a document system.
+
+### CSV bundle  🗜️
+
+**Export & share → CSV bundle (.zip)** writes one CSV per workbook sheet —
+`timetable.csv`, `semester-<n>.csv`, one per weekday, `by-teacher.csv`,
+`credit-hour-audit.csv` and `unscheduled.csv` — for anyone (or any script) that
+cannot open a spreadsheet. Same delivery rules as every other export: written
+next to the project, never silently overwritten.
+
+### Fixed  🐛
+
+* **Saved export settings were ignored.** The dialog persisted its state under
+  camelCase keys (`fontName`, `showDashboard`) while the server looked for
+  snake_case (`font_name`, `show_dashboard`), so a font, institution or sheet
+  choice saved on one run never applied to the next. Both spellings are now
+  resolved, and an explicit request still wins over the saved setting. There is
+  a test that fails on the old behaviour.
+* **Charts would have rendered empty in Excel.** The dashboard's chart data
+  lives in hidden helper columns, and Excel skips hidden cells unless the chart
+  says otherwise — both charts now set `plotVisOnly = 0`.
+* **Tab colours were written without an alpha byte**, which Excel reads as
+  transparent; they are now full ARGB.
+* **The workbook spoke in "class(es)".** Every count in the export is now
+  properly inflected — "1 class", "3 classes", "4.0 contact hours" — instead of
+  the developer shorthand `1 class(es)` that leaked into printed documents.
+* The new report prose said `0 move(s)` and `3 teacher(s)`; the export no longer
+  contains a single `(s)` anywhere but the one column header that needs it.
+* **Load balancing is offered only where it works.** It was briefly added to the
+  *Publish* (PDF) scope list, whose writer cannot draw it; it now lives in the
+  Reports dialog, which can.
+
+**Tests:** backend **185 passing** (was 157 in 2.0.3). New checks cover the
+semester book (Contents hyperlinks, the reference arrangement, per-weekday
+grouping, the credit-hour audit, dashboard charts, master data, the sheet
+toggles, the font sweep, the CSV bundle, the settings round-trip and the
+pluralisation), the free-slot matrix and its red "no room" case, the balancing
+engine's "only to somebody who is free" rule and its API, the colour pass on
+five sheets, the Contents colour coding, every kind of revision diff, reading a
+workbook back for the diff, revision numbering from the folder and versioned
+file names through the API. Frontend jsdom: **31 export-dialog checks** (was
+13), all green.
+
 ## 2.0.3 — reports, per-day schedules, documents & full keyboard accessibility
 
 The biggest change since 2.0.2: the app can now *tell you what to fix* rather

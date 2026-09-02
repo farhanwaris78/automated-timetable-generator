@@ -487,6 +487,9 @@
           </div>
           <label for="exportSemester">Semester (as printed)</label>
           <input type="text" id="exportSemester" maxlength="30" placeholder="e.g. 4">
+          <label for="exportDocumentName">Export file name</label>
+          <input type="text" id="exportDocumentName" maxlength="120"
+                 placeholder="e.g. Spring 2026 → Spring 2026-rev1.xlsx">
           <label for="exportCommencement">Commencement of classes</label>
           <input type="text" id="exportCommencement" maxlength="120" placeholder="e.g. January 2026">
         </div>
@@ -544,8 +547,9 @@
           <div class="form-grid">
             <label for="exportLayout">Layout</label>
             <select id="exportLayout">
-              <option value="grid">Grid — one page/sheet per day</option>
-              <option value="schedule" selected>Class Schedule — list by day</option>
+              <option value="book" selected>Semester book — one sheet per semester + roll-ups</option>
+              <option value="schedule">Class Schedule — a single printed page</option>
+              <option value="grid">Grid — room × time, one sheet per day</option>
             </select>
             <label for="exportFont">Font</label>
             <select id="exportFont">
@@ -572,11 +576,25 @@
               title block of the Class Schedule / grid export.</p>
           </div>
           <div class="export-include">
+            <label class="checkline"><input type="checkbox" id="exportContents" checked> Contents page (hyperlinked index)</label>
+            <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
             <label class="checkline"><input type="checkbox" id="exportShowSummary" checked> Summary sheet</label>
             <label class="checkline"><input type="checkbox" id="exportShowByTeacher" checked> By Teacher sheet</label>
+            <label class="checkline"><input type="checkbox" id="exportShowFreeSlots" checked> Free Slots (where a class can go)</label>
+            <label class="checkline"><input type="checkbox" id="exportShowBalance" checked> Load Balancing (who should take it)</label>
+            <label class="checkline"><input type="checkbox" id="exportShowAudit" checked> Credit Hour Audit</label>
+            <label class="checkline"><input type="checkbox" id="exportShowDashboard" checked> Dashboard with charts</label>
+            <label class="checkline"><input type="checkbox" id="exportShowMasterData" checked> Master Data (courses, teachers, rooms)</label>
             <label class="checkline"><input type="checkbox" id="exportShowUnscheduled" checked> Unscheduled list</label>
-            <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
           </div>
+          <div class="export-include">
+            <label class="checkline"><input type="checkbox" id="exportVersioned" checked>
+              Versioned file names — <code>Spring 2026-rev3.xlsx</code>, with a Revisions sheet
+              that lists what changed since the last export</label>
+          </div>
+          <p class="muted">The three report sheets — Room Utilisation, Teacher Workload and Conflict Report — always
+            travel with the workbook. Per-weekday sheets and the extras are added by the <strong>Semester book</strong>
+            layout; <strong>Grid</strong> keeps the room × time view.</p>
           <p class="export-preview-wrap">
             <span class="export-preview-label">Title block preview</span>
             <code class="export-preview" aria-live="polite"></code>
@@ -587,6 +605,8 @@
         <div class="publish-actions">
           <button type="button" class="btn btn-accent" id="publishExcelBtn">Export Excel</button>
           <button type="button" class="btn" id="publishCsvBtn">Export CSV</button>
+          <button type="button" class="btn" id="publishCsvBundleBtn"
+                  title="One CSV per sheet: whole timetable, each semester, each weekday, by teacher, credit-hour audit">CSV bundle (.zip)</button>
           <button type="button" class="btn btn-primary" id="publishPdfBtn">Download PDF</button>
           <button type="button" class="btn" id="publishIcsBtn">Download .ics</button>
           <button type="button" class="btn" id="publishCopyBtn">Copy subscription link</button>
@@ -708,11 +728,12 @@
             <option value="utilisation">Room utilisation — free vs. used hours per room</option>
             <option value="workload">Teacher workload — contact hours per week</option>
             <option value="conflict">Conflict report — every clash, sorted by severity</option>
+            <option value="balance">Load balancing — which classes to move, and to whom</option>
           </select>
         </div>
         <div id="reportHost" class="report-host" aria-live="polite"></div>
         <div class="publish-actions">
-          <button type="button" class="btn btn-accent" id="reportExcelBtn">Export Excel (all three sheets)</button>
+          <button type="button" class="btn btn-accent" id="reportExcelBtn">Export Excel (with the report sheets)</button>
           <button type="button" class="btn btn-primary" id="reportPdfBtn">Download PDF</button>
         </div>
         <p class="muted">The Excel workbook always contains the Room Utilisation, Teacher Workload and Conflict Report

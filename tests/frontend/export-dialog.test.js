@@ -17,7 +17,16 @@ const plain = html
 const dom = new JSDOM(plain, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost/" });
 const { window } = dom;
 
-window.fetch = function () {
+let lastExport = null;
+let lastSettings = null;
+window.fetch = function (url, options) {
+  if (options && options.body) {
+    try {
+      const body = JSON.parse(options.body);
+      if (String(url).indexOf("/api/export") !== -1) lastExport = body;
+      if (String(url).indexOf("/api/settings") !== -1 && body && body.export) lastSettings = body.export;
+    } catch (e) { /* not JSON */ }
+  }
   return Promise.resolve({
     ok: true, status: 200,
     text: () => Promise.resolve("{}"),
@@ -71,9 +80,60 @@ setTimeout(() => {
   check("preview shows the typed program",
     (preview.textContent || "").indexOf("BS Chemistry (Post ADP)") !== -1, preview.textContent);
 
+  // The semester-book export: the layout drop-down and every sheet toggle.
+  const layout = $("#exportLayout");
+  const layoutValues = Array.prototype.map.call(layout.options, (o) => o.value);
+  check("layout offers the semester book, the single page and the grid",
+    ["book", "schedule", "grid"].every((v) => layoutValues.indexOf(v) !== -1), layoutValues.join(","));
+  check("the semester book is the default layout", layout.value === "book", layout.value);
+
+  [
+    "exportContents", "exportShowSemesters", "exportShowSummary", "exportShowByTeacher",
+    "exportShowAudit", "exportShowDashboard", "exportShowMasterData", "exportShowUnscheduled",
+    "exportShowFreeSlots", "exportShowBalance", "exportVersioned",
+  ].forEach((id) => {
+    const box = $("#" + id);
+    check("sheet toggle #" + id + " is present and on", !!box && box.checked === true);
+  });
+
+  check("a CSV bundle button is offered", !!$("#publishCsvBundleBtn"));
+
+  // Versioned names need somewhere to type the document name.
+  const docName = $("#exportDocumentName");
+  check("the export file name can be set", !!docName);
+  if (docName) {
+    docName.value = "Spring 2026";
+    docName.dispatchEvent(new window.Event("input", { bubbles: true }));
+  }
+
+  // Toggling a sheet off must be persisted for the next run: the change event
+  // re-reads the form and POSTs the dialog state to /api/settings.
+  $("#exportShowDashboard").checked = false;
+  $("#exportShowDashboard").dispatchEvent(new window.Event("change", { bubbles: true }));
+  check("turning the dashboard off is persisted", lastSettings && lastSettings.showDashboard === false,
+    JSON.stringify(lastSettings || null));
+  check("the other sheet toggles are persisted too",
+    !!lastSettings && lastSettings.layout === "book" && lastSettings.showAudit === true,
+    JSON.stringify(lastSettings || null));
+  check("the free-slots, balancing and versioning options are persisted",
+    !!lastSettings && lastSettings.showFreeSlots === true && lastSettings.showBalance === true &&
+    lastSettings.versioned === true, JSON.stringify(lastSettings || null));
+  check("the export file name is persisted",
+    !!lastSettings && lastSettings.documentName === "Spring 2026",
+    lastSettings && lastSettings.documentName);
+
+  const reportScopes = Array.prototype.map.call(
+    ($("#reportScope") || { options: [] }).options, (o) => o.value);
+  check("the Reports dialog offers load balancing", reportScopes.indexOf("balance") !== -1,
+    reportScopes.join(","));
+  const publishScopes = Array.prototype.map.call(
+    ($("#publishScope") || { options: [] }).options, (o) => o.value);
+  check("the PDF dialog does not offer a scope the PDF writer cannot draw",
+    publishScopes.indexOf("balance") === -1, publishScopes.join(","));
+
   const failing = results.filter((r) => !r.pass);
   results.forEach((r) => console.log((r.pass ? "  PASS  " : "  FAIL  ") + r.name +
     (r.extra ? "   (" + r.extra + ")" : "")));
-  console.log(failing.length + "/" + results.length + " checks passed");
+  console.log(failing.length + " failing of " + results.length + " checks");
   process.exit(failing.length ? 1 : 0);
 }, 60);

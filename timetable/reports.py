@@ -281,7 +281,11 @@ def conflict_report(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "title": "Conflict Report",
         "headers": CONFLICT_HEADERS,
         "rows": unique,
-        "note": f"{errors} error(s) and {warnings} warning(s). Student-level clashes need the saved grid.",
+        "note": (
+            f"{errors} {'error' if errors == 1 else 'errors'} and "
+            f"{warnings} {'warning' if warnings == 1 else 'warnings'}. "
+            "Student-level clashes need the saved grid."
+        ),
     }
 
 
@@ -304,3 +308,147 @@ def _conflict_row(severity: str, day: str, a: dict[str, Any], b: dict[str, Any],
         str(a.get("instructor") or ""),
         issue,
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Load-balancing suggestions
+# --------------------------------------------------------------------------- #
+BALANCE_HEADERS = [
+    "Over-loaded teacher",
+    "Their hrs / week",
+    "Class to move",
+    "Section",
+    "Day",
+    "Time",
+    "Suggested teacher",
+    "Their hrs / week",
+    "After the move",
+    "Note",
+]
+
+# How far apart two teachers have to be before a move is worth suggesting.
+BALANCE_GAP_HOURS = 2.0
+
+
+def _entry_hours(entry: dict[str, Any]) -> float:
+    return max(0, to_minutes(str(entry.get("end_time"))) -
+               to_minutes(str(entry.get("start_time")))) / 60.0
+
+
+def load_balance_suggestions(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Suggest concrete moves that even out the teaching load.
+
+    For every over-loaded teacher, look at their classes longest-first and find
+    the least-loaded colleague who is **free at exactly that day and time** -
+    the move must leave the receiver no busier than the giver, so the spread
+    always shrinks.  Moves are applied tentatively as they are suggested, so a
+    second suggestion never assumes the same hours twice.
+
+    Nothing is changed in the timetable; this is a printable list of what to
+    consider.
+    """
+    if not entries:
+        return {
+            "title": "Load Balancing",
+            "headers": BALANCE_HEADERS,
+            "rows": [],
+            "note": "Nothing is scheduled yet, so there is no load to balance.",
+            "moves": 0,
+        }
+
+    hours: dict[str, float] = {}
+    for entry in entries:
+        name = str(entry.get("instructor") or "Unassigned")
+        hours[name] = hours.get(name, 0.0) + _entry_hours(entry)
+
+    average = sum(hours.values()) / len(hours) if hours else 0.0
+    spread = (max(hours.values()) - min(hours.values())) if hours else 0.0
+
+    def is_over(name: str) -> bool:
+        return hours[name] > OVERLOADED_HOURS or hours[name] > average + BALANCE_GAP_HOURS
+
+    def is_under(name: str) -> bool:
+        return hours[name] < UNDERLOADED_HOURS or hours[name] < average - BALANCE_GAP_HOURS
+
+    def busy_at(name: str, entry: dict[str, Any]) -> bool:
+        """True when ``name`` already teaches something overlapping ``entry``."""
+        day = int(entry.get("day") or 0)
+        start, end = to_minutes(str(entry["start_time"])), to_minutes(str(entry["end_time"]))
+        for other in entries:
+            if str(other.get("instructor") or "Unassigned") != name:
+                continue
+            if int(other.get("day") or 0) != day:
+                continue
+            try:
+                o_start, o_end = to_minutes(str(other["start_time"])), to_minutes(str(other["end_time"]))
+            except Exception:
+                continue
+            if o_start < end and start < o_end:
+                return True
+        return False
+
+    rows: list[list[Any]] = []
+    blocked = 0
+    moves = 0
+    for giver in sorted(hours, key=lambda name: -hours[name]):
+        if not is_over(giver):
+            continue
+        giver_entries = sorted(
+            [e for e in entries if str(e.get("instructor") or "Unassigned") == giver],
+            key=lambda e: -_entry_hours(e),
+        )
+        found_any = False
+        for entry in giver_entries:
+            duration = _entry_hours(entry)
+            candidates = [
+                name for name in hours
+                if name != giver
+                and is_under(name)
+                and hours[name] + duration <= hours[giver] - duration
+                and not busy_at(name, entry)
+            ]
+            if not candidates:
+                continue
+            receiver = min(candidates, key=lambda name: hours[name])
+            giver_after = round(hours[giver] - duration, 2)
+            receiver_after = round(hours[receiver] + duration, 2)
+            rows.append([
+                giver,
+                round(hours[giver], 2),
+                _label(entry),
+                str(entry.get("section") or ""),
+                WEEKDAYS[int(entry.get("day") or 1) - 1],
+                _when(entry),
+                receiver,
+                round(hours[receiver], 2),
+                f"{giver_after} h / {receiver_after} h",
+                f"Balances {round(hours[giver], 2)} h → {giver_after} h and "
+                f"{round(hours[receiver], 2)} h → {receiver_after} h",
+            ])
+            hours[giver] = giver_after
+            hours[receiver] = receiver_after
+            moves += 1
+            found_any = True
+            if not is_over(giver):
+                break
+        if not found_any:
+            blocked += 1
+
+    rows.sort(key=lambda row: -float(row[1]))
+    note = (
+        f"{moves} {'move' if moves == 1 else 'moves'} suggested. "
+        f"Average load {average:.1f} h/week across {len(hours)} "
+        f"{'teacher' if len(hours) == 1 else 'teachers'}; current spread {spread:.1f} h."
+    )
+    if blocked:
+        note += (
+            f" {blocked} over-loaded {'teacher has' if blocked == 1 else 'teachers have'} "
+            "no free colleague at any of their times."
+        )
+    return {
+        "title": "Load Balancing",
+        "headers": BALANCE_HEADERS,
+        "rows": rows,
+        "note": note,
+        "moves": moves,
+    }

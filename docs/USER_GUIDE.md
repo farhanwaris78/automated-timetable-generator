@@ -120,7 +120,8 @@ That is the *semester clash*.
 * The **Semester** picker on the toolbar filters the course list and dims every
   class on the grid that belongs to a different semester.
 * With a semester selected, *Auto-fill remaining* fills **only that semester**.
-* **Excel export writes one worksheet per semester** (rows = day × section),
+* **Excel export writes one Class Schedule worksheet per semester** — the
+  printed layout, rows grouped by day with the day merged down the block —
   and **Publish → One page per semester** does the same as a PDF.
 * `http://localhost:PORT/calendar.ics?semester=3` is a live feed for one batch.
 
@@ -199,7 +200,9 @@ into something you can hand out.
 
 The **Reports** button on the toolbar opens the same three reports in the app
 and lets you review them on screen before printing — the Excel workbook always
-contains all three report sheets whatever layout you choose.
+contains all three report sheets whatever layout you choose, and the **Reports**
+dialog exports them in the semester-book layout so they arrive with the rest of
+the document.
 
 Then pick the **data**: the grid on screen (including unsaved changes) or the
 saved timetable, optionally limited to a single teacher, section or room.
@@ -209,21 +212,80 @@ matches your institution's style:
 
 | Option | Effect |
 |---|---|
-| **Layout** | **Grid** (default) is the day/semester workbook above; **Class Schedule** is the printed list with one-coloured band per day and 8 columns — *Days, Course Code, Course Title, C.Hrs, Total No.of Students, Teacher's Name, Time, Room No*. Either is available for Excel **and** PDF. |
+| **Layout** | **Semester book** (default) is the whole document below; **Class Schedule** is the same printed list as a *single* page; **Grid** is the room × time facilities view. All three are available for Excel, and the printed look for PDF. |
 | **Font** | the typeface applied to **every** cell and every PDF character — **Times New Roman** by default (also Arial, Calibri, Georgia, Courier New) |
 | **Font size** | the body text size (9–12) |
 | **Orientation** | landscape (default) or portrait for each printed page |
 | **Document identity** | **Institution**, **Name of program**, **Semester** and **Commencement of classes**, plus the **term** as a season drop-down (Spring / Summer / Fall / Winter) **+ year + free text**. Set all of these under the dedicated **Document** button in the toolbar (or the link inside *Publish*), and a live preview of the title block updates as you type. |
+| **Contents page** | a hyperlinked index of every sheet with its class count |
+| **One sheet per semester** | the batch view, in the printed class-schedule arrangement |
 | **Summary sheet** | the filterable class-by-class list |
-| **By Teacher sheet** | each teacher's personal week |
+| **By Teacher sheet** | each teacher's personal week, merged per teacher |
+| **Free Slots** | the open-slot matrix per batch, plus free rooms per slot |
+| **Load Balancing** | which classes to move, and to whom |
+| **Credit Hour Audit** | planned credit hours vs. contact hours actually on the grid |
+| **Dashboard with charts** | the week's headline numbers plus two Excel charts |
+| **Master Data** | the courses, teachers and rooms behind the grid |
 | **Unscheduled list** | the gaps that still need a slot |
-| **One sheet per semester** | the batch view, rows = day × section |
 
 The choices are remembered between sessions, so once you set the font to Times
 New Roman it stays there for every later export.
 
-In the **Class Schedule** layout a class whose credit hours are **0** is shown
-as **“non-credited course”** in the C.Hrs column automatically.
+### What the Excel export contains
+
+The default **Semester book** layout writes one workbook that reads like a
+document, in this order:
+
+| Sheet | What is inside |
+|---|---|
+| **Contents** | a clickable index of every sheet, its class count and a one-line description |
+| **Summary** | every class on one auto-filtered sheet — day, shift, semester, type, credit hours, times, code, course, section, teacher, room, students |
+| **Semester 1 … Semester *n*** | **one sheet per semester**: the printed class schedule (*Days, Course Code, Course Title, C.Hrs, Total No.of Students, Teacher's Name, Time, Room No*), rows grouped by day with the day cell merged and banded, then a totals strip (classes, credit hours, contact hours, sections, teachers, non-credited) |
+| **Monday … Sunday** | one sheet per weekday, the same eight columns, rows grouped by *semester · section* so a batch's whole day reads straight down |
+| **By Teacher** | the same eight columns grouped by teacher, with the day instead of the teacher repeated |
+| **Free Slots** | a green/amber matrix per batch — one row per weekday, one column per slot. Green **free**, amber = booked (showing the blocking course), red **no room** = the batch is free but every room is taken. Below it, **Free rooms at each slot** names the rooms and seats available |
+| **Load Balancing** | concrete moves: *over-loaded teacher → which class → suggested teacher → hours after the move*. A move is only suggested when that teacher is free at exactly that time and ends up no busier than the giver |
+| **Credit Hour Audit** | per course-section: planned credit hours vs. contact hours on the grid, the difference, and a status — `Complete`, `Short 1.5 h`, `Extra …`, `Not scheduled` or `Non-credited` |
+| **Dashboard** | scheduled classes, contact hours, sections, teachers, rooms, non-credited classes, unscheduled count and clash count, plus two bar charts (room utilisation and teacher hours) |
+| **Room Utilisation** | free vs. busy hours per room, flagging rooms under 50% used |
+| **Teacher Workload** | contact hours per teacher, flagging over/under-loaded staff |
+| **Conflict Report** | every clash, errors first, with the issue spelled out |
+| **Master Data** | the courses, teachers and rooms behind the grid |
+| **Unscheduled** | every class the catalogue expects that the grid does not have |
+| **Revisions** | second sheet in the book when versioned names are on: the revision history plus what changed since the last export |
+
+### Versioned exports
+
+Tick **Versioned file names** and each export is numbered from what is already
+in the folder — `Spring 2026-rev1.xlsx`, `-rev2`, `-rev3` — so nothing is ever
+overwritten and the name says which copy is current. The stem comes from the
+**Export file name** field under *Document*. Each file carries a **Revisions**
+sheet with the history and a change list colour-coded by kind (green added, red
+removed, amber moved / re-roomed / re-taught); the changes are worked out by
+reading the previous revision's Summary sheet back out of the file.
+
+### What the colours mean
+
+| Colour | Meaning |
+|---|---|
+| A course's own colour | identity — the same colour it wears on the grid, lightened so the text stays readable. Used on the semester, weekday, teacher, Summary and Master Data sheets |
+| Pastel per weekday | the day grouping on semester sheets and the Contents page |
+| Green | free · balanced · complete · a suggested move · the current revision |
+| Amber | needs a look: short on hours · under-used · evening shift · non-credited · moved or re-roomed |
+| Red | stop: a clash · a slot with no free room · not scheduled · over-loaded |
+
+Every sheet gets the same title block (institution, program, semester,
+commencement), repeats its header row on each printed page, fits one page wide,
+carries page numbers in the footer, and is colour-tabbed by kind — semester
+sheets green, weekday sheets violet, reports red.
+
+A **CSV bundle** button in the same dialog writes a `.zip` with one CSV per
+sheet (`timetable.csv`, `semester-4.csv`, `monday.csv`, `by-teacher.csv`,
+`credit-hour-audit.csv`, `unscheduled.csv`) for anyone without a spreadsheet
+app.
+
+A class whose credit hours are **0** is shown as **“non-credited course”** in
+the C.Hrs column automatically, and is never flagged by the credit-hour audit.
 
 * **Download PDF** writes the file straight from the app — no browser print
   dialog, real vector text (Times, matching the workbook), and it looks the
@@ -283,8 +345,9 @@ as **“non-credited course”** in the C.Hrs column automatically.
    you open the app.
 10. **Export**:
     * **Export Excel** (also in *Publish* → **Export Excel**, or on the toolbar) —
-      **one worksheet per day** and **one per semester**, colour-coded exactly like the screen,
-      plus a filterable **Summary** sheet, a **By Teacher** sheet and an **Unscheduled** sheet when
+      a **Contents** page, a filterable **Summary**, **one Class Schedule worksheet per
+      semester**, one per weekday, **By Teacher**, a **Credit Hour Audit**, a charted
+      **Dashboard**, the three report sheets, **Master Data** and an **Unscheduled** sheet when
       something is missing. Both shifts are included. All text is **Times New Roman** by default,
       chosen in the *Formatting* panel.
     * **Publish** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) — the same *Formatting* options,
@@ -333,7 +396,7 @@ a text box.
 
 | Key | Action |
 |---|---|
-| <kbd>Ctrl</kbd>+<kbd>E</kbd> | Export to Excel (one sheet per day) |
+| <kbd>Ctrl</kbd>+<kbd>E</kbd> | Export to Excel (one sheet per semester, plus roll-ups) |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> (or <kbd>Alt</kbd>+<kbd>P</kbd>) | Publish: PDF per teacher / section / room + calendar |
 | <kbd>Alt</kbd>+<kbd>D</kbd> | Document: institution, program, term, semester, commencement |
 | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Reports: room utilisation / workload / clashes |

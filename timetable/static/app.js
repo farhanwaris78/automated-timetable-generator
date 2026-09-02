@@ -88,9 +88,11 @@
     project: { name: "Untitled project", path: null, savedAt: null, recent: [], home: "", suffix: ".ttproj" },
     fs: { cwd: "", mode: "open", selected: null, newFolder: false, writable: true, roots: [], places: [], files: [], dirs: [] },
     exportOptions: {
-      layout: "schedule", fontName: "Times New Roman", fontSize: 10, orientation: "landscape",
+      layout: "book", fontName: "Times New Roman", fontSize: 10, orientation: "landscape",
       institution: "", term: "", program: "", semester: "", commencement: "",
-      showSummary: true, showByTeacher: true, showUnscheduled: true, showSemesters: true
+      showSummary: true, showByTeacher: true, showUnscheduled: true, showSemesters: true,
+      showAudit: true, showDashboard: true, showMasterData: true, contents: true,
+      showFreeSlots: true, showBalance: true, versioned: true, documentName: ""
     }
   };
 
@@ -2137,7 +2139,7 @@
      a font / orientation choice survives the next run. */
   function readExportOptions() {
     state.exportOptions = {
-      layout: $("#exportLayout").value || "schedule",
+      layout: $("#exportLayout").value || "book",
       fontName: $("#exportFont").value || "Times New Roman",
       fontSize: parseInt($("#exportSize").value, 10) || 10,
       orientation: $("#exportOrientation").value || "landscape",
@@ -2149,13 +2151,21 @@
       showSummary: $("#exportShowSummary").checked,
       showByTeacher: $("#exportShowByTeacher").checked,
       showUnscheduled: $("#exportShowUnscheduled").checked,
-      showSemesters: $("#exportShowSemesters").checked
+      showSemesters: $("#exportShowSemesters").checked,
+      showAudit: $("#exportShowAudit").checked,
+      showDashboard: $("#exportShowDashboard").checked,
+      showMasterData: $("#exportShowMasterData").checked,
+      contents: $("#exportContents").checked,
+      showFreeSlots: $("#exportShowFreeSlots").checked,
+      showBalance: $("#exportShowBalance").checked,
+      versioned: $("#exportVersioned").checked,
+      documentName: ($("#exportDocumentName").value || "").trim()
     };
   }
 
   function writeExportOptionsToForm() {
     var o = state.exportOptions;
-    $("#exportLayout").value = o.layout || "schedule";
+    $("#exportLayout").value = o.layout || "book";
     $("#exportFont").value = o.fontName || "Times New Roman";
     $("#exportSize").value = String(o.fontSize || 10);
     $("#exportOrientation").value = o.orientation || "landscape";
@@ -2167,10 +2177,20 @@
     var seasonYear = parseSeasonYear(o.term || "");
     if ($("#exportSeason")) $("#exportSeason").value = seasonYear.season;
     if ($("#exportTermYear")) $("#exportTermYear").value = seasonYear.year;
-    $("#exportShowSummary").checked = !!o.showSummary;
-    $("#exportShowByTeacher").checked = !!o.showByTeacher;
-    $("#exportShowUnscheduled").checked = !!o.showUnscheduled;
-    $("#exportShowSemesters").checked = !!o.showSemesters;
+    /* The four extra sheets arrived in 2.1.0; a project saved by an older
+       build has no flag for them, so treat "missing" as "on". */
+    $("#exportShowSummary").checked = o.showSummary !== false;
+    $("#exportShowByTeacher").checked = o.showByTeacher !== false;
+    $("#exportShowUnscheduled").checked = o.showUnscheduled !== false;
+    $("#exportShowSemesters").checked = o.showSemesters !== false;
+    $("#exportShowAudit").checked = o.showAudit !== false;
+    $("#exportShowDashboard").checked = o.showDashboard !== false;
+    $("#exportShowMasterData").checked = o.showMasterData !== false;
+    $("#exportContents").checked = o.contents !== false;
+    $("#exportShowFreeSlots").checked = o.showFreeSlots !== false;
+    $("#exportShowBalance").checked = o.showBalance !== false;
+    $("#exportVersioned").checked = o.versioned !== false;
+    $("#exportDocumentName").value = o.documentName || "";
   }
 
   /* Build the title-block sentence the printed export will show, and live-update
@@ -2239,15 +2259,24 @@
       show_summary: state.exportOptions.showSummary,
       show_by_teacher: state.exportOptions.showByTeacher,
       show_unscheduled: state.exportOptions.showUnscheduled,
-      show_semesters: state.exportOptions.showSemesters
+      show_semesters: state.exportOptions.showSemesters,
+      show_audit: state.exportOptions.showAudit,
+      show_dashboard: state.exportOptions.showDashboard,
+      show_master_data: state.exportOptions.showMasterData,
+      contents: state.exportOptions.contents,
+      show_free_slots: state.exportOptions.showFreeSlots,
+      show_balance: state.exportOptions.showBalance,
+      versioned: state.exportOptions.versioned,
+      document_name: state.exportOptions.documentName
     };
   }
 
   function exportExcel() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
-    toast("Building workbook", "One sheet per day and per semester…", "info", 2500);
+    toast("Building workbook", "Contents, one sheet per semester, free slots, reports…", "info", 2500);
     runExport("/api/export/xlsx", exportBody(exportStyleBody()), "timetable.xlsx",
-      "Excel exported — Summary, one sheet per day, one per semester, By Teacher.")
+      "Excel exported — Contents, one sheet per semester, one per weekday, Free Slots, " +
+      "Load Balancing and the reports.")
       .catch(function (err) { toast("Excel export failed", err.message, "error"); });
   }
 
@@ -2514,10 +2543,10 @@
   function exportReportExcel() {
     if (!state.placements.length) { toast("Nothing to report on", "Schedule at least one class first.", "warning"); return; }
     toast("Building workbook", "Includes Room Utilisation, Teacher Workload and Conflict Report…", "info", 2500);
-    // Force the grid layout so the workbook is guaranteed to carry all three
-    // report sheets whatever layout happens to be selected in Publish.
+    // Force the semester-book layout so the workbook is guaranteed to carry
+    // all three report sheets whatever layout is selected in Export & share.
     var body = exportBody(exportStyleBody());
-    body.layout = "grid";
+    body.layout = "book";
     runExport("/api/export/xlsx", body, "timetable.xlsx",
       "Excel exported — including the three report sheets.")
       .catch(function (err) { toast("Excel export failed", err.message, "error"); });
@@ -2593,6 +2622,16 @@
     // can be written straight into the project folder.
     runExport("/api/export/csv", exportBody(exportStyleBody()), "timetable.csv", "CSV exported")
       .catch(function (err) { toast("CSV export failed", err.message, "error"); });
+  }
+
+  /* One CSV per workbook sheet, zipped - the same content as the Excel book
+     for anyone (or anything) that cannot open a spreadsheet. */
+  function exportCsvBundle() {
+    if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
+    toast("Building CSV bundle", "One CSV per semester, per weekday, by teacher…", "info", 2500);
+    runExport("/api/export/csv-bundle", exportBody(exportStyleBody()), "timetable-csv.zip",
+      "CSV bundle exported — open the .zip to find one file per sheet.")
+      .catch(function (err) { toast("CSV bundle failed", err.message, "error"); });
   }
 
   /* ============================ data management ============================ */
@@ -3124,6 +3163,7 @@
     reports: openReportsDialog,
     importData: openImportDialog,
     exportCsv: exportCsv,
+    exportCsvBundle: exportCsvBundle,
     print: function () { buildPrintable(); window.print(); },
     resetSaved: resetSavedTimetable,
     shiftMorning: function () { switchShift("morning"); },
@@ -3284,6 +3324,7 @@
     $("#publishWeeks").addEventListener("input", updatePublishLink);
     $("#publishExcelBtn").addEventListener("click", exportExcel);
     $("#publishCsvBtn").addEventListener("click", exportCsv);
+    if ($("#publishCsvBundleBtn")) $("#publishCsvBundleBtn").addEventListener("click", exportCsvBundle);
     $("#publishPdfBtn").addEventListener("click", publishPdf);
     $("#publishIcsBtn").addEventListener("click", publishIcs);
     $("#publishCopyBtn").addEventListener("click", copyPublishLink);
@@ -3291,7 +3332,9 @@
     // with the same font / orientation the user last picked.
     ["#exportLayout", "#exportFont", "#exportSize", "#exportOrientation", "#exportInstitution", "#exportTerm",
      "#exportProgram", "#exportSemester", "#exportCommencement", "#exportSeason", "#exportTermYear",
-     "#exportShowSummary", "#exportShowByTeacher", "#exportShowUnscheduled", "#exportShowSemesters"]
+     "#exportShowSummary", "#exportShowByTeacher", "#exportShowUnscheduled", "#exportShowSemesters",
+     "#exportShowAudit", "#exportShowDashboard", "#exportShowMasterData", "#exportContents",
+     "#exportShowFreeSlots", "#exportShowBalance", "#exportVersioned", "#exportDocumentName"]
       .forEach(function (selector) {
         var field = $(selector);
         if (field) {
