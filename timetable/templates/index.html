@@ -28,6 +28,7 @@
         <button type="button" class="btn btn-ghost" data-action="addRoom">+ Room</button>
         <button type="button" class="btn btn-ghost" data-action="addCourse">+ Course</button>
         <button type="button" class="btn btn-ghost" data-action="addBuilding">+ Building</button>
+        <button type="button" class="btn btn-ghost" data-action="addSemester">+ Semester</button>
         <button type="button" class="btn btn-ghost" data-action="addSection">+ Section</button>
         <button type="button" class="btn btn-ghost" data-action="manage">Manage data</button>
       </div>
@@ -374,6 +375,7 @@
         <button type="button" class="tab" data-tab="rooms" aria-selected="false">Classrooms</button>
         <button type="button" class="tab" data-tab="courses" aria-selected="false">Courses &amp; codes</button>
         <button type="button" class="tab" data-tab="buildings" aria-selected="false">Buildings</button>
+        <button type="button" class="tab" data-tab="semesters" aria-selected="false">Semesters</button>
       </div>
       <div class="dialog-body">
         <div class="manage-toolbar">
@@ -382,6 +384,18 @@
           <button type="button" class="btn btn-primary" id="manageAddBtn">Add</button>
         </div>
         <div id="managePanel" class="manage-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- semester manager: names and order are project settings and are used by filters and exports -->
+  <div id="semesterDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="semesterTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head"><h3 id="semesterTitle">Semesters</h3><button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button></header>
+      <div class="dialog-body">
+        <p class="muted">Name the eight preset semesters, add more when needed, and use the arrows to set the order used in filters and exports.</p>
+        <div class="manage-toolbar"><button type="button" class="btn btn-primary" id="semesterAddBtn">+ Add semester</button></div>
+        <div id="semesterList" class="semester-list"></div>
       </div>
     </div>
   </div>
@@ -776,14 +790,18 @@
 
   <!-- help -->
   <div id="helpDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="helpDialogTitle" hidden>
-    <div class="dialog-card">
+    <div class="dialog-card dialog-wide help-card">
       <header class="dialog-head">
-        <h3 id="helpDialogTitle">How to use</h3>
+        <h3 id="helpDialogTitle">Complete tutorial</h3>
         <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
       </header>
-      <div class="dialog-body">
+      <div class="dialog-body help-scroll">
+        <p class="help-lead"><strong>Step-by-step university timetable tutorial</strong><br>Follow the highlighted controls below. This tutorial is available offline inside the app. <a class="btn btn-primary" href="{{ url_for('static', filename='tutorial/TUTORIAL.pdf') }}" target="_blank" rel="noopener">Open printable PDF</a></p>
+        <div class="tutorial-shot"><img src="{{ url_for('static', filename='tutorial/01-connection.svg') }}" alt="Highlighted database connection status"><strong>1. Wait for the green connection badge.</strong></div>
+        <div class="tutorial-shot"><img src="{{ url_for('static', filename='tutorial/02-project.svg') }}" alt="Highlighted New Open and Save project buttons"><strong>2. Create or open a project, then save it.</strong></div>
+        <div class="tutorial-shot"><img src="{{ url_for('static', filename='tutorial/03-semesters.svg') }}" alt="Highlighted Add Semester button"><strong>3. Add and order semesters.</strong></div>
         <ol class="help-list">
-          <li><strong>Add your data</strong> - teachers (<kbd>Alt+T</kbd>), classrooms (<kbd>Alt+R</kbd>) and courses
+          <li><strong>Start with the connection status</strong> - wait until the top-right badge shows Local database / Server database and counts. Then use <strong>New</strong> or <strong>Open</strong> in the project bar. Save often with <strong>Save</strong> or <strong>Save as</strong>.<br><strong>Add your data</strong> - teachers (<kbd>Alt+T</kbd>), classrooms (<kbd>Alt+R</kbd>) and courses
             with their codes (<kbd>Alt+C</kbd>). Everything is editable under <em>Manage data</em> (<kbd>Alt+M</kbd>).
           </li>
           <li><strong>Pick a shift</strong> - Morning (<kbd>Alt+1</kbd>) or Evening (<kbd>Alt+2</kbd>). Each shift keeps

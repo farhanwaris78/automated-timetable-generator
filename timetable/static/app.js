@@ -65,6 +65,7 @@
     rooms: [],
     buildings: [],
     instructors: [],
+    semesters: Array.from({length: 8}, function (_, i) { return { id: i + 1, name: "Semester " + (i + 1) }; }),
     shift: "morning",
     shiftHours: JSON.parse(JSON.stringify(DEFAULT_SHIFTS)),
     days: 5,
@@ -438,7 +439,7 @@
     select.appendChild(el("option", null, "All semesters"));
     select.firstChild.value = "";
     values.forEach(function (value) {
-      var option = el("option", null, "Semester " + value);
+      var option = el("option", null, semesterLabel(value));
       option.value = String(value);
       select.appendChild(option);
     });
@@ -1434,6 +1435,9 @@
     if (config.shift === "morning" || config.shift === "evening") state.shift = config.shift;
     if (config.shiftHours && config.shiftHours.morning && config.shiftHours.evening) {
       state.shiftHours = config.shiftHours;
+    }
+    if (config.semesters && Array.isArray(config.semesters) && config.semesters.length) {
+      state.semesters = config.semesters.map(function (s) { return { id: Number(s.id), name: String(s.name || "Semester " + s.id) }; });
     }
     if (config.export) {
       state.exportOptions = Object.assign({}, state.exportOptions, config.export);
@@ -2635,6 +2639,37 @@
   }
 
   /* ============================ data management ============================ */
+  function semesterLabel(value) {
+    var item = state.semesters.filter(function (s) { return Number(s.id) === Number(value); })[0];
+    return item ? item.name : "Semester " + value;
+  }
+
+  function renderSemesterManager() {
+    var host = $("#semesterList"); if (!host) return;
+    host.innerHTML = "";
+    state.semesters.forEach(function (semester, index) {
+      var row = el("div", "semester-row");
+      row.appendChild(el("span", "semester-number", String(index + 1)));
+      var input = el("input"); input.value = semester.name; input.maxLength = 80;
+      input.setAttribute("aria-label", "Name for semester " + semester.id);
+      input.addEventListener("change", function () { semester.name = input.value.trim() || "Semester " + semester.id; persistSemesters(); renderAll(); });
+      row.appendChild(input);
+      var up = el("button", "btn btn-tiny", "↑"); up.disabled = index === 0; up.title = "Move semester up";
+      up.addEventListener("click", function () { var x = state.semesters.splice(index, 1)[0]; state.semesters.splice(index - 1, 0, x); persistSemesters(); renderSemesterManager(); renderAll(); });
+      var down = el("button", "btn btn-tiny", "↓"); down.disabled = index === state.semesters.length - 1; down.title = "Move semester down";
+      down.addEventListener("click", function () { var x = state.semesters.splice(index, 1)[0]; state.semesters.splice(index + 1, 0, x); persistSemesters(); renderSemesterManager(); renderAll(); });
+      row.appendChild(up); row.appendChild(down); host.appendChild(row);
+    });
+  }
+  function persistSemesters() {
+    api("/api/settings", {method: "POST", body: { semesters: state.semesters }}).catch(function () {});
+  }
+  function openSemesterManager() { renderSemesterManager(); openDialog("#semesterDialog"); }
+  function addSemester() {
+    var next = state.semesters.length ? Math.max.apply(null, state.semesters.map(function (s) { return Number(s.id); })) + 1 : 1;
+    state.semesters.push({id: next, name: "Semester " + next}); persistSemesters(); renderSemesterManager();
+  }
+
   function refreshCatalogue() {
     return Promise.all([
       api("/api/rooms"),
@@ -2974,6 +3009,8 @@
       return;
     }
 
+    if (state.manageTab === "semesters") { host.innerHTML = ""; renderSemesterManager(); host.appendChild($("#semesterList").cloneNode(true)); return; }
+
     if (state.manageTab === "buildings") {
       var buildingRooms = {};
       state.rooms.forEach(function (room) {
@@ -3122,6 +3159,7 @@
     addCourse: function () { openCourseDialog(null); },
     showUnscheduled: showUnscheduledReport,
     addBuilding: function () { openBuildingDialog(null); },
+    addSemester: openSemesterManager,
     addSection: function () { openSectionDialog(null); },
     manage: function () { openManage(); },
     undo: undo,
@@ -3362,6 +3400,7 @@
       tab.addEventListener("click", function () { openManage(tab.dataset.tab); });
     });
     $("#manageSearch").addEventListener("input", renderManage);
+    $("#semesterAddBtn").addEventListener("click", addSemester);
     $("#manageAddBtn").addEventListener("click", function () {
       if (state.manageTab === "teachers") openTeacherDialog(null);
       else if (state.manageTab === "rooms") openRoomDialog(null);

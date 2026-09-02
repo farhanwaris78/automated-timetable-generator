@@ -1,0 +1,64 @@
+%PDF-1.4
+1 0 obj
+<< /Length 198 >>
+stream
+BT /F1 24 Tf 60 740 Td (Automated Timetable Generator) Tj /F1 14 Tf 0 -42 Td (Complete offline tutorial) Tj 0 -28 Td (Follow the highlighted controls in the application Help section.) Tj 0 -28 Td ET
+endstream
+endobj
+2 0 obj
+<< /Length 301 >>
+stream
+BT /F1 24 Tf 60 740 Td (1. Connection and projects) Tj /F1 14 Tf 0 -42 Td (Wait until the top-right badge shows Local database or Server database with counts.) Tj 0 -28 Td () Tj 0 -28 Td (Click New for a blank project or Open for an existing .ttproj file. Use Save / Save as regularly.) Tj 0 -28 Td ET
+endstream
+endobj
+3 0 obj
+<< /Length 365 >>
+stream
+BT /F1 24 Tf 60 740 Td (2. Buildings, semesters, rooms, teachers) Tj /F1 14 Tf 0 -42 Td (Click + Building. Then click + Semester to rename the presets 1–8 and use the up/down arrows to set order.) Tj 0 -28 Td () Tj 0 -28 Td (Add rooms in their buildings, then teachers. Add courses, assign teachers, select semesters, and enable labs where needed.) Tj 0 -28 Td ET
+endstream
+endobj
+4 0 obj
+<< /Length 385 >>
+stream
+BT /F1 24 Tf 60 740 Td (3. Grid, scheduling and export) Tj /F1 14 Tf 0 -42 Td (Choose shift, days per week, start/end time, class duration and break. Press Generate grid.) Tj 0 -28 Td () Tj 0 -28 Td (Drag course cards into free cells. Check clashes, Save to DB, then Save the project. Export Excel, PDF, CSV, or calendar. Semester ordering is used in the semester view.) Tj 0 -28 Td ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 0 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 1 0 R >>
+endobj
+7 0 obj
+<< /Type /Page /Parent 0 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 2 0 R >>
+endobj
+8 0 obj
+<< /Type /Page /Parent 0 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 3 0 R >>
+endobj
+9 0 obj
+<< /Type /Page /Parent 0 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+10 0 obj
+<< /Type /Pages /Kids [6 0 R 7 0 R 8 0 R 9 0 R] /Count 4 >>
+endobj
+11 0 obj
+<< /Type /Catalog /Pages 10 0 R >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000258 00000 n 
+0000000610 00000 n 
+0000001026 00000 n 
+0000001462 00000 n 
+0000001532 00000 n 
+0000001658 00000 n 
+0000001784 00000 n 
+0000001910 00000 n 
+0000002036 00000 n 
+0000002112 00000 n 
+trailer << /Size 12 /Root 11 0 R >>
+startxref
+2163
+%%EOF
