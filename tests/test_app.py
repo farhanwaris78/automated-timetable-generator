@@ -1671,7 +1671,7 @@ def test_file_in_use_message_is_friendly():
     assert generic
 
 
-# ==================== v2.1.0: the semester-book Excel export ================== #
+# ==================== v2.0.4: the semester-book Excel export ================== #
 
 
 def _book(**overrides):
@@ -1963,7 +1963,7 @@ def test_export_prose_is_pluralised_not_parenthesised():
     assert "contact 3 hours" not in text                   # no duplicated number
 
 
-# ============= v2.2.0: free slots, load balancing, revisions, colour ========= #
+# ========== v2.0.4: free slots, load balancing, revisions, colour =========== #
 
 
 def _entry(day, start, end, room, code, name, section, teacher, *, semester=1,
