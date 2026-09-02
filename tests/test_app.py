@@ -1480,3 +1480,100 @@ def test_project_autosave_via_api(app, tmp_path):
     result = client.post("/api/project/autosave", json={"path": project["path"]}).get_json()
     assert result["ok"] is True
     assert Path(result["path"]).is_file()
+
+
+# ----------------------- v2.6: /api/report endpoint -------------------------- #
+def test_api_report_room_utilisation(client):
+    assignments = [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+        {"day": 1, "start_time": "10:00", "end_time": "11:20", "room_id": 1,
+         "course_id": 102, "section": "A", "shift": "morning"},
+    ]
+    client.post("/api/timetable", json={"assignments": assignments})
+    report = client.post("/api/report/utilisation", json={"days": 5}).get_json()
+    assert report["ok"] is True
+    assert report["title"]
+    assert report["headers"][0] == "Room"
+    assert report["entries"] == 2
+    assert any("Utilisation" in str(h) for h in report["headers"])
+
+
+def test_api_report_teacher_workload(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+    report = client.post("/api/report/workload", json={"days": 5}).get_json()
+    assert report["ok"] is True
+    assert report["headers"][0] == "Teacher"
+    assert report["rows"]
+
+
+def test_api_report_conflict(client):
+    assignments = [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 102, "section": "A", "shift": "morning"},
+    ]
+    # These two genuinely clash, so the report must see both of them: pass the
+    # on-screen grid straight in rather than going through the (blocking) save.
+    report = client.post("/api/report/conflict", json={"assignments": assignments, "days": 5}).get_json()
+    assert report["ok"] is True
+    assert report["rows"]
+    assert report["headers"][0] == "Severity"
+    assert any("Same room booked twice" in str(row) for row in report["rows"])
+
+
+def test_api_report_rejects_an_unknown_scope(client):
+    response = client.post("/api/report/nonsense", json={})
+    assert response.status_code == 400
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_report_sheets_appear_in_the_workbook_api(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+    from openpyxl import load_workbook
+    import io as _io
+
+    response = client.post("/api/export/xlsx", json={"days": 5, "shift": "all"})
+    book = load_workbook(_io.BytesIO(response.data))
+    assert "Room Utilisation" in book.sheetnames
+    assert "Teacher Workload" in book.sheetnames
+    assert "Conflict Report" in book.sheetnames
+    conflict = book["Conflict Report"]
+    # Even with a valid timetable the Conflict Report sheet must exist.
+    assert conflict["A1"].value == "Conflict Report"
+
+    # the daily scope publishes one landscape page per weekday via the API too
+    day_response = client.post("/api/publish/pdf", json={"scope": "day", "days": 5})
+    assert day_response.status_code == 200
+    assert day_response.data.startswith(b"%PDF-1.4")
+    assert day_response.mimetype == "application/pdf"
+
+
+def test_report_and_day_scopes_win_over_schedule_layout():
+    """layout='schedule' alone must not swallow the report / per-day scopes."""
+    from timetable.publishing import build_pdf
+    data = build_pdf(_report_entries(), _REPORT_ROOMS, days=5, scope="utilisation", layout="schedule")
+    assert data.startswith(b"%PDF-1.4")
+    assert data.count(b"/Type /Page ") == 1
+    day_data = build_pdf(_report_entries(), _REPORT_ROOMS, days=5, scope="day", layout="schedule")
+    assert day_data.count(b"/Type /Page ") == 2
+
+
+def test_file_in_use_message_is_friendly():
+    from timetable.web import _file_in_use_message
+    from pathlib import Path
+    import errno as _errno
+    target = Path("/tmp/some-workbook.xlsx")
+    msg = _file_in_use_message(target, OSError(_errno.EBUSY, "busy"))
+    assert "open in another program" in msg
+    assert target.name in msg
+    assert "nothing was changed" in msg
+    generic = _file_in_use_message(target, OSError(_errno.EACCES, "denied"))
+    assert generic

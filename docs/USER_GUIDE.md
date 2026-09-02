@@ -189,9 +189,17 @@ into something you can hand out.
 | Choice | Result |
 |---|---|
 | **Master grid** | one landscape page per day, rooms down the side — the noticeboard copy |
+| **Per-day list** | one landscape page **per weekday** with a big day header — the printed class schedule, split day by day |
 | **One page per teacher** | each teacher's personal week, with their contact hours |
 | **One page per course section** | what a class of students actually needs |
 | **One page per room** | a booking sheet to stick on the door |
+| **Room utilisation** | free vs. busy hours per room, flagging rooms under 50% used |
+| **Teacher workload** | contact hours per teacher per week, flagging over/under-loaded staff |
+| **Clashes to fix** | every clash sorted by severity, with a suggested fix — one printable page |
+
+The **Reports** button on the toolbar opens the same three reports in the app
+and lets you review them on screen before printing — the Excel workbook always
+contains all three report sheets whatever layout you choose.
 
 Then pick the **data**: the grid on screen (including unsaved changes) or the
 saved timetable, optionally limited to a single teacher, section or room.
@@ -205,7 +213,7 @@ matches your institution's style:
 | **Font** | the typeface applied to **every** cell and every PDF character — **Times New Roman** by default (also Arial, Calibri, Georgia, Courier New) |
 | **Font size** | the body text size (9–12) |
 | **Orientation** | landscape (default) or portrait for each printed page |
-| **Document identity** | **Institution**, **Academic term** (season, e.g. *Spring 2026*), **Name of program**, **Semester** and **Commencement of classes** — printed on the title block of the Class Schedule / grid export. Typing them shows a live preview in the dialog. |
+| **Document identity** | **Institution**, **Name of program**, **Semester** and **Commencement of classes**, plus the **term** as a season drop-down (Spring / Summer / Fall / Winter) **+ year + free text**. Set all of these under the dedicated **Document** button in the toolbar (or the link inside *Publish*), and a live preview of the title block updates as you type. |
 | **Summary sheet** | the filterable class-by-class list |
 | **By Teacher sheet** | each teacher's personal week |
 | **Unscheduled list** | the gaps that still need a slot |
@@ -327,6 +335,8 @@ a text box.
 |---|---|
 | <kbd>Ctrl</kbd>+<kbd>E</kbd> | Export to Excel (one sheet per day) |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> (or <kbd>Alt</kbd>+<kbd>P</kbd>) | Publish: PDF per teacher / section / room + calendar |
+| <kbd>Alt</kbd>+<kbd>D</kbd> | Document: institution, program, term, semester, commencement |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Reports: room utilisation / workload / clashes |
 | <kbd>Alt</kbd>+<kbd>V</kbd> | Export to CSV |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print |
 
@@ -384,8 +394,20 @@ D:\Timetables\
 ```
 
 Exporting twice never overwrites: the second file becomes
-`timetable (2).xlsx`. If you have not saved a project yet, exports simply
-download to your browser's Downloads folder as before.
+`timetable (2).xlsx`. If the file you are exporting to is still open in
+Excel (or another program), the app tells you *“file is in use”* instead of
+failing quietly — nothing is overwritten or lost. If you have not saved a
+project yet, exports simply download to your browser's Downloads folder as
+before.
+
+While you work, the app periodically writes a timestamped backup of the
+current project into a `_backups` folder right next to the project file
+(keeping the newest few), so a crash never costs you more than a few minutes
+of changes.
+
+On the screen, a course with **0 credit hours** wears a **“non-credited”**
+chip on its card and grid cell as well as in the exports — so the label is
+never a surprise.
 
 > **Locked-down machines:** set `TTG_SANDBOX_HOME=1` (or
 > `TTG_SANDBOX_ROOT=D:\Shared\Timetables`) in the `.env` file to confine the

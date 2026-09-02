@@ -26,6 +26,7 @@ from .config import Settings, bundle_dir, load_settings
 from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
 from .exporters import build_csv, build_workbook, openpyxl_available
+from .reports import conflict_report, room_utilisation, teacher_workload
 from .filesystem import (
     FileSystemError,
     default_export_dir,
@@ -833,6 +834,30 @@ def create_app(settings: Settings | None = None) -> Flask:
             filename="timetable.csv",
             mimetype="text/csv; charset=utf-8",
         )
+
+    # ---- reporting (room utilisation / teacher workload / conflicts) ------ #
+    @app.post("/api/report/<string:scope>")
+    def api_report(scope: str):
+        """Build one of the three reports as JSON so the UI can show it on
+        screen and the same data powers the Excel sheet and PDF page."""
+        payload = request.get_json(silent=True) or {}
+        svc = service()
+        raw = payload.get("assignments")
+        entries = svc.describe_assignments(_parse_assignments(raw)) if raw else svc.load_timetable()
+        rooms = svc.list_rooms()
+        days = int(payload.get("days") or max((int(e["day"]) for e in entries), default=5))
+        slots = payload.get("slots") or None
+        shift = str(payload.get("shift") or "all")
+
+        if scope == "utilisation":
+            report = room_utilisation(entries, rooms, days=days, slots=slots, shift=shift)
+        elif scope == "workload":
+            report = teacher_workload(entries)
+        elif scope == "conflict":
+            report = conflict_report(entries)
+        else:
+            raise ValidationError("report scope must be utilisation, workload or conflict.")
+        return jsonify({"ok": True, **report, "entries": len(entries)})
 
     # ---- bulk import (Excel) ---------------------------------------------- #
     @app.get("/api/import/template")

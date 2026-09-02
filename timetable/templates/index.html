@@ -191,6 +191,8 @@
         <div class="toolbar-group">
           <button type="button" class="btn btn-accent" data-action="exportExcel">Export Excel</button>
           <button type="button" class="btn btn-accent" data-action="publish">Publish&hellip;</button>
+          <button type="button" class="btn" data-action="documentSettings" title="Set institution, program, term, semester and print style">Document</button>
+          <button type="button" class="btn" data-action="reports" title="Room utilisation, teacher workload and conflict report">Reports</button>
           <button type="button" class="btn" data-action="importData">Import Excel</button>
           <button type="button" class="btn" data-action="exportCsv">CSV</button>
           <button type="button" class="btn" data-action="print">Print</button>
@@ -454,6 +456,53 @@
     </div>
   </div>
 
+  <!-- document identity: institution / program / term / semester / commencement -->
+  <div id="documentDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="documentDialogTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="documentDialogTitle">Document</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <p class="muted">These fields appear on the title block of every Class Schedule / grid export.
+          Nothing here changes the timetable itself.</p>
+        <div class="form-grid">
+          <label for="exportInstitution">Institution</label>
+          <input type="text" id="exportInstitution" maxlength="120" placeholder="e.g. University of Education">
+          <label for="exportProgram">Name of program</label>
+          <input type="text" id="exportProgram" maxlength="120" placeholder="e.g. BS Chemistry (Post ADP)">
+          <label for="exportSeason">Term / season</label>
+          <div class="term-grid">
+            <select id="exportSeason" aria-label="Term season">
+              <option value="">—</option>
+              <option value="Spring">Spring</option>
+              <option value="Summer">Summer</option>
+              <option value="Fall">Fall</option>
+              <option value="Winter">Winter</option>
+            </select>
+            <input type="number" id="exportTermYear" min="1900" max="2100" step="1"
+              placeholder="Year" aria-label="Term year">
+            <input type="text" id="exportTerm" maxlength="120" autocomplete="off"
+              placeholder="e.g. Spring 2026 (or any free text)">
+          </div>
+          <label for="exportSemester">Semester (as printed)</label>
+          <input type="text" id="exportSemester" maxlength="30" placeholder="e.g. 4">
+          <label for="exportCommencement">Commencement of classes</label>
+          <input type="text" id="exportCommencement" maxlength="120" placeholder="e.g. January 2026">
+        </div>
+        <div id="documentWarnings" class="form-warnings" aria-live="polite"></div>
+        <p class="export-preview-wrap">
+          <span class="export-preview-label">Title block preview</span>
+          <code id="exportPreview" class="export-preview" aria-live="polite"></code>
+        </p>
+        <div class="form-actions">
+          <button type="button" class="btn" data-close-dialog>Cancel</button>
+          <button type="button" class="btn btn-primary" data-action="saveDocument">Save document</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- publish + export options: Excel / CSV / PDF / calendar -->
   <div id="publishDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="publishDialogTitle" hidden>
     <div class="dialog-card dialog-wide">
@@ -467,10 +516,14 @@
           <select id="publishScope">
             <option value="schedule">Class Schedule - list by day (printed look)</option>
             <option value="all">Master grid - one page per day</option>
+            <option value="day">Per-day list - one page per weekday with a day header</option>
             <option value="teacher">One page per teacher</option>
             <option value="section">One page per course section</option>
             <option value="semester">One page per semester (batch view)</option>
             <option value="room">One page per room</option>
+            <option value="utilisation">Report: room utilisation</option>
+            <option value="workload">Report: teacher workload</option>
+            <option value="conflict">Report: clashes to fix</option>
           </select>
           <label for="publishFilter">Limit to</label>
           <select id="publishFilter">
@@ -514,16 +567,9 @@
               <option value="landscape" selected>Landscape</option>
               <option value="portrait">Portrait</option>
             </select>
-            <label for="exportInstitution">Institution</label>
-            <input type="text" id="exportInstitution" maxlength="120" placeholder="e.g. University of Education">
-            <label for="exportTerm">Academic term</label>
-            <input type="text" id="exportTerm" maxlength="120" placeholder="e.g. Spring 2024">
-            <label for="exportProgram">Name of program</label>
-            <input type="text" id="exportProgram" maxlength="120" placeholder="e.g. BS Chemistry (Post ADP)">
-            <label for="exportSemester">Semester (as printed)</label>
-            <input type="text" id="exportSemester" maxlength="30" placeholder="e.g. 4">
-            <label for="exportCommencement">Commencement of classes</label>
-            <input type="text" id="exportCommencement" maxlength="120" placeholder="e.g. January 2024">
+            <p class="hint">Institution, program, term, semester and commencement are set under
+              <button type="button" class="link-btn" data-action="documentSettings">Document</button> — they appear on the
+              title block of the Class Schedule / grid export.</p>
           </div>
           <div class="export-include">
             <label class="checkline"><input type="checkbox" id="exportShowSummary" checked> Summary sheet</label>
@@ -532,10 +578,10 @@
             <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
           </div>
           <p class="export-preview-wrap">
-            <span class="export-preview-label">Preview on the printed export</span>
-            <code id="exportPreview" class="export-preview" aria-live="polite"></code>
+            <span class="export-preview-label">Title block preview</span>
+            <code class="export-preview" aria-live="polite"></code>
           </p>
-          <p class="muted">Courses with <strong>0 credit hours</strong> are written as <em>non-credited course</em> in the C.Hrs column. The fields above appear on the title block of the Class Schedule / grid export.</p>
+          <p class="muted">Courses with <strong>0 credit hours</strong> are written as <em>non-credited course</em> in the C.Hrs column. Set the title-block details (institution, program, term, semester, commencement) under <strong>Document</strong>.</p>
         </fieldset>
 
         <div class="publish-actions">
@@ -645,6 +691,33 @@
         <button type="button" class="btn" data-close-dialog>Cancel</button>
         <button type="button" class="btn btn-primary" id="projectPrimaryBtn"></button>
       </footer>
+    </div>
+  </div>
+
+  <!-- room utilisation / teacher workload / conflict report -->
+  <div id="reportsDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="reportsDialogTitle" hidden>
+    <div class="dialog-card dialog-wide">
+      <header class="dialog-head">
+        <h3 id="reportsDialogTitle">Reports</h3>
+        <button type="button" class="icon-btn" data-close-dialog aria-label="Close">&times;</button>
+      </header>
+      <div class="dialog-body">
+        <div class="form-grid">
+          <label for="reportScope">Report</label>
+          <select id="reportScope">
+            <option value="utilisation">Room utilisation — free vs. used hours per room</option>
+            <option value="workload">Teacher workload — contact hours per week</option>
+            <option value="conflict">Conflict report — every clash, sorted by severity</option>
+          </select>
+        </div>
+        <div id="reportHost" class="report-host" aria-live="polite"></div>
+        <div class="publish-actions">
+          <button type="button" class="btn btn-accent" id="reportExcelBtn">Export Excel (all three sheets)</button>
+          <button type="button" class="btn btn-primary" id="reportPdfBtn">Download PDF</button>
+        </div>
+        <p class="muted">The Excel workbook always contains the Room Utilisation, Teacher Workload and Conflict Report
+          sheets; the PDF prints just the selected report. They are calculated from the grid on screen.</p>
+      </div>
     </div>
   </div>
 
