@@ -578,3 +578,9 @@ if a button's `data-action`, a shortcut or a dialog id has no implementation.
   folder; optionally point it at SQL Server, PostgreSQL or MySQL with one line
   of `.env`
 * Server-side clash engine, atomic saves, and a test suite of **94 tests**
+
+## 2.0.5 - 2026-09-02
+
+- Added semester manager with preset semesters 1–8, custom names, renaming, and ordering controls.
+- Added offline, scrollable Help tutorial and printable PDF tutorial.
+- Added highlighted tutorial illustrations and repository documentation.
