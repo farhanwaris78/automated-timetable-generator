@@ -25,7 +25,7 @@ from . import __version__
 from .config import Settings, bundle_dir, load_settings
 from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
-from .exporters import build_csv, build_workbook, openpyxl_available
+from .exporters import build_csv, build_csv_bundle, build_workbook, openpyxl_available
 from .reports import conflict_report, room_utilisation, teacher_workload
 from .filesystem import (
     FileSystemError,
@@ -74,6 +74,17 @@ def home_dir() -> Path:
     from .filesystem import home_dir as _home
 
     return _home()
+
+
+def _camel_case(key: str) -> str:
+    """``show_dashboard`` -> ``showDashboard``.
+
+    The browser keeps the export options in camelCase and the Python exporters
+    take snake_case; translating one way is enough because the lookups try
+    both spellings.
+    """
+    head, *tail = str(key).split("_")
+    return head + "".join(part[:1].upper() + part[1:] for part in tail)
 
 
 def _file_in_use_message(target: Path, exc: OSError) -> str:
@@ -758,22 +769,37 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     def _export_style(payload: dict[str, Any]) -> dict[str, Any]:
         """Merge the UI's export settings (saved on the server) with the ones
-        sent for this particular export, so a font choice sticks between runs."""
+        sent for this particular export, so a font choice sticks between runs.
+
+        The dialog persists its state under camelCase keys (``showDashboard``)
+        while the exporters take snake_case (``show_dashboard``), so both
+        spellings are accepted here - otherwise the saved settings would
+        silently never apply.
+        """
         import json
 
         raw = service().get_setting("export", "")
         saved = json.loads(raw) if raw else {}
 
         def pick(key: str, default: Any = None) -> Any:
-            return payload.get(key, saved.get(key, default))
+            for source, name in (
+                (payload, key), (saved, key),
+                (payload, _camel_case(key)), (saved, _camel_case(key)),
+            ):
+                if isinstance(source, dict) and source.get(name) is not None:
+                    return source[name]
+            return default
 
+        layout = str(pick("layout", "book") or "book").lower()
+        if layout not in ("book", "schedule", "grid"):
+            layout = "book"
         return {
             "font_name": str(pick("font_name", "Times New Roman") or "Times New Roman"),
             "font_size": int(pick("font_size", 10) or 10),
             "orientation": str(pick("orientation", "landscape") or "landscape"),
             "institution": str(pick("institution", "") or ""),
             "term": str(pick("term", "") or ""),
-            "layout": str(pick("layout", "grid") or "grid"),
+            "layout": layout,
             "program": str(pick("program", "") or ""),
             "commencement": str(pick("commencement", "") or ""),
             "semester": str(pick("semester", "") or ""),
@@ -781,6 +807,10 @@ def create_app(settings: Settings | None = None) -> Flask:
             "show_by_teacher": bool(pick("show_by_teacher", True)),
             "show_unscheduled": bool(pick("show_unscheduled", True)),
             "show_semesters": bool(pick("show_semesters", True)),
+            "show_audit": bool(pick("show_audit", True)),
+            "show_dashboard": bool(pick("show_dashboard", True)),
+            "show_master_data": bool(pick("show_master_data", True)),
+            "contents": bool(pick("contents", True)),
         }
 
     @app.post("/api/export/xlsx")
@@ -815,6 +845,10 @@ def create_app(settings: Settings | None = None) -> Flask:
             show_by_teacher=style["show_by_teacher"],
             show_unscheduled=style["show_unscheduled"],
             show_semesters=style["show_semesters"],
+            show_audit=style["show_audit"],
+            show_dashboard=style["show_dashboard"],
+            show_master_data=style["show_master_data"],
+            contents=style["contents"],
         )
         return _deliver(
             workbook,
@@ -827,12 +861,29 @@ def create_app(settings: Settings | None = None) -> Flask:
     def api_export_csv():
         """CSV of the timetable - the same delivery rules as the Excel export."""
         payload = request.get_json(silent=True) or {}
-        entries, _ = _export_entries(payload)
+        entries, assignments = _export_entries(payload)
         return _deliver(
             build_csv(entries),
             payload,
             filename="timetable.csv",
             mimetype="text/csv; charset=utf-8",
+        )
+
+    @app.post("/api/export/csv-bundle")
+    def api_export_csv_bundle():
+        """A .zip with one CSV per workbook sheet (per semester, per weekday…)."""
+        payload = request.get_json(silent=True) or {}
+        entries, assignments = _export_entries(payload)
+        svc = service()
+        return _deliver(
+            build_csv_bundle(
+                entries,
+                unscheduled=svc.unscheduled(assignments if assignments else None),
+                shift=str(payload.get("shift") or "all"),
+            ),
+            payload,
+            filename="timetable-csv.zip",
+            mimetype="application/zip",
         )
 
     # ---- reporting (room utilisation / teacher workload / conflicts) ------ #

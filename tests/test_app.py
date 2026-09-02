@@ -477,8 +477,17 @@ def test_autofill_needs_a_grid(client):
 
 
 # ------------------------------ Excel export --------------------------------- #
+def _header_row(sheet, first_heading="Days"):
+    """Find the header row under the metadata title block (it moves with the
+    document identity fields, so tests must not hard-code a row number)."""
+    for row in range(1, min(sheet.max_row, 20) + 1):
+        if sheet.cell(row=row, column=1).value == first_heading:
+            return row
+    raise AssertionError(f"header row ({first_heading!r}) not found in {sheet.title}")
+
+
 @pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
-def test_excel_export_has_one_sheet_per_day(client):
+def test_excel_export_puts_every_semester_on_its_own_sheet(client):
     client.post("/api/timetable", json={"assignments": [
         {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
          "course_id": 101, "section": "A", "shift": "morning"},
@@ -496,25 +505,44 @@ def test_excel_export_has_one_sheet_per_day(client):
 
     workbook = openpyxl.load_workbook(_io.BytesIO(response.data))
     names = workbook.sheetnames
-    assert names[:8] == [
-        "Summary", "Monday", "Tuesday", "Wednesday", "Thursday",
-        "Friday", "Saturday", "Sunday",
-    ]
-    # one sheet per semester that actually has classes, then the roll-ups
+
+    # a Contents page first, then Summary, then one sheet per semester ...
+    assert names[0] == "Contents"
+    assert names[1] == "Summary"
     assert [n for n in names if n.startswith("Semester ")] == ["Semester 1", "Semester 3"]
-    assert "By Teacher" in names and "Unscheduled" in names
+    # ... one sheet per weekday ...
+    assert names[names.index("Semester 3") + 1:names.index("By Teacher")] == [
+        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+    ]
+    # ... and the roll-ups the previous releases had.
+    for expected in ("By Teacher", "Credit Hour Audit", "Dashboard", "Room Utilisation",
+                     "Teacher Workload", "Conflict Report", "Master Data", "Unscheduled"):
+        assert expected in names, expected
 
     summary = workbook["Summary"]
-    assert [c.value for c in summary[1]][:6] == ["Day", "Shift", "Semester", "Type", "Start", "End"]
-    assert summary.cell(row=2, column=1).value == "Monday"
+    header = _header_row(summary, "Day")
+    assert [summary.cell(row=header, column=c).value for c in range(1, 6)] == [
+        "Day", "Shift", "Semester", "Type", "C.Hrs",
+    ]
+    assert summary.cell(row=header + 1, column=1).value == "Monday"
+    assert summary.auto_filter.ref is not None        # filterable
 
-    semester = workbook["Semester 1"]
-    assert semester.cell(row=4, column=1).value == "Day / Section"
-    assert semester.cell(row=5, column=1).value.startswith("Monday")
+    # every semester sheet is drawn in the printed Class Schedule arrangement
+    for name, expected_day in (("Semester 1", "Monday"), ("Semester 3", "Saturday")):
+        semester = workbook[name]
+        row = _header_row(semester)
+        assert [semester.cell(row=row, column=c).value for c in range(1, 9)] == [
+            "Days", "Course Code", "Course Title", "C.Hrs", "Total No.of Students",
+            "Teacher's Name", "Time", "Room No",
+        ]
+        assert semester.cell(row=row + 1, column=1).value == expected_day
+        assert "AM" in str(semester.cell(row=row + 1, column=7).value) or \
+            "PM" in str(semester.cell(row=row + 1, column=7).value)
 
     gaps = workbook["Unscheduled"]
-    assert gaps.cell(row=3, column=1).value == "Semester"
-    assert gaps.cell(row=4, column=5).value in ("Theory", "Lab")
+    gaps_header = _header_row(gaps, "Semester")
+    assert gaps.cell(row=gaps_header, column=1).value == "Semester"
+    assert gaps.cell(row=gaps_header + 1, column=5).value in ("Theory", "Lab")
 
 
 @pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
@@ -1249,15 +1277,32 @@ def test_class_schedule_layout_matches_the_reference():
 
 
 @pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
-def test_grid_layout_is_still_the_default_when_layout_is_omitted():
+def test_book_layout_is_the_default_when_layout_is_omitted():
     import io as _io
 
     from openpyxl import load_workbook
 
     data = build_workbook(_schedule_entries(), _SCHEDULE_ROOMS, days=1)
     book = load_workbook(_io.BytesIO(data))
-    assert "Class Schedule" not in book.sheetnames
+    assert "Class Schedule" not in book.sheetnames      # that is layout="schedule"
     assert "Summary" in book.sheetnames and "Monday" in book.sheetnames
+    assert book.sheetnames[0] == "Contents"
+
+
+def test_grid_layout_still_draws_room_by_time_grids():
+    """layout="grid" keeps the facilities view: rooms down the side, slots across."""
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    data = build_workbook(_schedule_entries(), _SCHEDULE_ROOMS, days=1, layout="grid")
+    book = load_workbook(_io.BytesIO(data))
+    assert "Contents" in book.sheetnames
+    monday = book["Monday"]
+    assert monday.cell(row=4, column=1).value == "Room / Time"
+    assert "A-105" in str(monday.cell(row=5, column=1).value)
+    # the grid cells carry the course label and the teacher, not a reference row
+    assert "Special Paper - I" in str(monday.cell(row=5, column=2).value)
 
 
 def test_credit_hours_are_carried_into_export_entries(service):
@@ -1441,13 +1486,16 @@ def test_workbook_contains_the_report_sheets():
     import io as _io
     from openpyxl import load_workbook
 
-    data = build_workbook(_report_entries(), _REPORT_ROOMS, days=5, layout="grid")
-    book = load_workbook(_io.BytesIO(data))
-    assert "Room Utilisation" in book.sheetnames
-    assert "Teacher Workload" in book.sheetnames
-    assert "Conflict Report" in book.sheetnames
-    sheet = book["Conflict Report"]
-    assert sheet.cell(row=3, column=1).value == "Severity"
+    for layout in ("grid", "book"):
+        data = build_workbook(_report_entries(), _REPORT_ROOMS, days=5, layout=layout)
+        book = load_workbook(_io.BytesIO(data))
+        assert "Room Utilisation" in book.sheetnames
+        assert "Teacher Workload" in book.sheetnames
+        assert "Conflict Report" in book.sheetnames
+        sheet = book["Conflict Report"]
+        header = _header_row(sheet, "Severity")
+        assert sheet.cell(row=header, column=1).value == "Severity"
+        assert sheet["A1"].value == "Conflict Report"
 
 
 def test_project_autosave_writes_a_backup_next_to_the_project(app, tmp_path):
@@ -1577,3 +1625,295 @@ def test_file_in_use_message_is_friendly():
     assert "nothing was changed" in msg
     generic = _file_in_use_message(target, OSError(_errno.EACCES, "denied"))
     assert generic
+
+
+# ==================== v2.1.0: the semester-book Excel export ================== #
+
+
+def _book(**overrides):
+    """Build the default (book) workbook from the shared reference fixture."""
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    kwargs = dict(
+        days=5, title="Class Schedule", term="Spring 2024",
+        institution="University of Education Jauharabad Campus",
+        program="BS Chemistry (Post ADP)", semester="4", commencement="January 2024",
+        unscheduled=[{"course_id": 199, "code": "CHEM4199", "course_name": "Project Work",
+                      "section": "A", "kind": "theory", "semester": 4, "hours": 3,
+                      "instructor": "Dr Project"}],
+    )
+    kwargs.update(overrides)
+    layout = kwargs.pop("layout", "book")
+    data = build_workbook(_schedule_entries(), _SCHEDULE_ROOMS, layout=layout, **kwargs)
+    return load_workbook(_io.BytesIO(data))
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_semester_book_opens_with_a_hyperlinked_contents_page():
+    book = _book()
+    assert book.sheetnames[0] == "Contents"
+    contents = book["Contents"]
+
+    listed = [contents.cell(row=r, column=1).value for r in range(1, contents.max_row + 1)]
+    for name in book.sheetnames[1:]:
+        assert name in listed, f"{name} is missing from the Contents page"
+
+    # the sheet names are real links into the workbook, not just text
+    linked = [
+        cell for row in contents.iter_rows() for cell in row
+        if cell.hyperlink is not None and cell.hyperlink.location
+    ]
+    assert linked, "the Contents page carries no hyperlinks"
+    targets = {cell.hyperlink.location for cell in linked}
+    assert "'Summary'!A1" in targets
+    assert "'Semester 4'!A1" in targets
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_semester_sheet_uses_the_reference_arrangement_and_totals():
+    book = _book()
+    # the fixture only has semester-4 classes, so there is exactly one sheet
+    assert [n for n in book.sheetnames if n.startswith("Semester ")] == ["Semester 4"]
+    sheet = book["Semester 4"]
+    header = _header_row(sheet)
+    assert [sheet.cell(row=header, column=c).value for c in range(1, 9)] == [
+        "Days", "Course Code", "Course Title", "C.Hrs", "Total No.of Students",
+        "Teacher's Name", "Time", "Room No",
+    ]
+
+    # metadata title block, exactly like the printed Class Schedule
+    assert sheet.cell(row=1, column=1).value == "Class Schedule Spring 2024 — Semester 4"
+    assert sheet.cell(row=2, column=1).value == "University of Education Jauharabad Campus"
+    assert "Name of program: BS Chemistry (Post ADP)" in str(sheet.cell(row=3, column=1).value)
+    assert sheet.cell(row=4, column=1).value == "Commencement of Classes: January 2024"
+
+    # Monday block: two classes, day cell merged over them
+    monday = header + 1
+    assert sheet.cell(row=monday, column=1).value == "Monday"
+    assert sheet.cell(row=monday, column=2).value == "CHEM4134"
+    assert sheet.cell(row=monday, column=7).value == "2:30 PM - 4:00 PM"
+    assert sheet.cell(row=monday + 1, column=1).value is None       # merged away
+    assert any("CHEM4130" == sheet.cell(row=r, column=2).value for r in range(monday, monday + 3))
+
+    # the non-credited course keeps its label, and the totals strip is present
+    texts = [str(cell.value) for row in sheet.iter_rows() for cell in row if cell.value]
+    assert any("non-credited course" == text for text in texts)
+    assert any(text.startswith("Total: 3 classes") for text in texts)
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_weekday_sheets_group_the_day_by_semester_and_section():
+    book = _book()
+    monday = book["Monday"]
+    header = _header_row(monday, "Section")
+    assert monday.cell(row=header, column=1).value == "Section"
+    assert monday.cell(row=header + 1, column=1).value == "Semester 4\nSection A"
+    assert monday.cell(row=header + 1, column=2).value == "CHEM4134"
+
+    # an empty weekday still gets its sheet, and says so instead of lying
+    tuesday = book["Tuesday"]
+    tuesday_header = _header_row(tuesday, "Section")
+    assert "No classes are scheduled on Tuesday." == tuesday.cell(
+        row=tuesday_header + 1, column=1).value
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_by_teacher_sheet_merges_the_teacher_over_their_classes():
+    book = _book()
+    sheet = book["By Teacher"]
+    header = _header_row(sheet, "Teacher")
+    assert [sheet.cell(row=header, column=c).value for c in range(1, 9)] == [
+        "Teacher", "Day", "Course Code", "Course Title", "C.Hrs",
+        "Total No.of Students", "Time", "Room No",
+    ]
+    teachers = [sheet.cell(row=r, column=1).value for r in range(header + 1, sheet.max_row + 1)]
+    assert "Miss Fozia" in teachers and "Dr. Bilal" in teachers
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_credit_hour_audit_reports_planned_versus_scheduled_hours():
+    book = _book()
+    sheet = book["Credit Hour Audit"]
+    header = _header_row(sheet, "Semester")
+    assert sheet.cell(row=header, column=7).value == "Planned hrs / week"
+    assert sheet.cell(row=header, column=8).value == "Contact hrs on grid"
+
+    rows = {}
+    for r in range(header + 1, sheet.max_row + 1):
+        code = sheet.cell(row=r, column=2).value
+        if code:
+            rows[code] = [sheet.cell(row=r, column=c).value for c in range(7, 11)]
+
+    # CHEM4134 is a 3-credit course booked for one 90-minute period a week
+    assert rows["CHEM4134"][0] == 3
+    assert rows["CHEM4134"][1] == 1.5
+    assert str(rows["CHEM4134"][3]).startswith("Short")
+    # CHEM4199 was never placed on the grid at all
+    assert rows["CHEM4199"][3] == "Not scheduled"
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_dashboard_sheet_carries_kpis_and_charts():
+    book = _book()
+    sheet = book["Dashboard"]
+    header = _header_row(sheet, "Measure")
+    measures = [sheet.cell(row=r, column=1).value for r in range(header + 1, sheet.max_row + 1)]
+    assert "Scheduled classes / week" in measures
+    assert "Classes still unscheduled" in measures
+    assert sheet.cell(row=header + 1, column=2).value == 3          # three scheduled classes
+    assert len(sheet._charts) == 2                                  # utilisation + workload
+    # the chart source columns are hidden, so the charts must be allowed to
+    # read them or Excel draws two empty frames
+    assert all(chart.visible_cells_only is False for chart in sheet._charts)
+    assert sheet.column_dimensions["H"].hidden is True
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_master_data_sheet_lists_courses_teachers_and_rooms():
+    book = _book()
+    sheet = book["Master Data"]
+    titles = [str(cell.value) for row in sheet.iter_rows() for cell in row]
+    assert "Courses" in titles and "Teachers" in titles and "Rooms" in titles
+    assert "CHEM4134" in titles
+    assert "Miss Fozia" in titles
+    assert "mosque" in titles
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_the_extra_sheets_can_be_switched_off():
+    book = _book(show_audit=False, show_dashboard=False, show_master_data=False,
+                 show_unscheduled=False, contents=False)
+    for absent in ("Credit Hour Audit", "Dashboard", "Master Data", "Unscheduled", "Contents"):
+        assert absent not in book.sheetnames
+    # the core document survives
+    assert "Semester 4" in book.sheetnames and "Summary" in book.sheetnames
+    assert "Room Utilisation" in book.sheetnames                    # reports always travel
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_every_cell_uses_the_chosen_font_and_prints_one_page_wide():
+    book = _book(font_name="Georgia", font_size=11)
+    for sheet in book.worksheets:
+        assert sheet.page_setup.fitToWidth == 1
+        if sheet.sheet_properties.tabColor:
+            assert str(sheet.sheet_properties.tabColor.rgb).startswith("FF")   # opaque tab
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.value is not None:
+                    assert cell.font.name == "Georgia", (sheet.title, cell.coordinate)
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_grid_layout_is_untouched_by_the_book_only_sheets():
+    book = _book(layout="grid")
+    assert "Contents" in book.sheetnames and "Monday" in book.sheetnames
+    for absent in ("Credit Hour Audit", "Dashboard", "Master Data"):
+        assert absent not in book.sheetnames
+    assert book["Monday"].cell(row=4, column=1).value == "Room / Time"
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_csv_bundle_has_one_file_per_sheet(tmp_path):
+    import io as _io
+    import zipfile
+
+    from timetable.exporters import build_csv_bundle
+
+    blob = build_csv_bundle(
+        _schedule_entries(),
+        unscheduled=[{"course_id": 199, "code": "CHEM4199", "course_name": "Project Work",
+                      "section": "A", "kind": "theory", "semester": 4, "hours": 3,
+                      "instructor": "Dr Project"}],
+    )
+    archive = zipfile.ZipFile(_io.BytesIO(blob))
+    names = set(archive.namelist())
+    assert "timetable.csv" in names
+    assert "semester-4.csv" in names
+    assert "monday.csv" in names and "thursday.csv" in names
+    assert "tuesday.csv" not in names                 # nothing happens on Tuesday
+    assert "by-teacher.csv" in names
+    assert "credit-hour-audit.csv" in names
+    assert "unscheduled.csv" in names
+
+    head = archive.read("semester-4.csv").decode("utf-8")
+    assert head.startswith("\ufeff")                  # Excel-friendly BOM
+    assert '"CHEM4134"' in head
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_csv_bundle_endpoint_writes_a_zip_next_to_the_project(client, tmp_path):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+    response = client.post("/api/export/csv-bundle", json={"folder": str(tmp_path)})
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["saved"] is True
+
+    import zipfile
+
+    written = Path(payload["path"])
+    assert written.suffix == ".zip"
+    assert "timetable.csv" in zipfile.ZipFile(written).namelist()
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_saved_export_settings_are_honoured_whichever_case_they_use(client):
+    """The dialog persists camelCase keys; the exporters take snake_case.  Both
+    must reach the workbook, otherwise a saved font choice silently never
+    applies."""
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+    client.post("/api/settings", json={"export": {
+        "fontName": "Georgia", "showDashboard": False, "institution": "Saved Institute",
+    }})
+
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    data = client.post("/api/export/xlsx", json={}).data
+    book = load_workbook(_io.BytesIO(data))
+    assert "Dashboard" not in book.sheetnames
+    semester = book["Semester 1"]
+    assert semester["A2"].value == "Saved Institute"
+    for row in semester.iter_rows():
+        for cell in row:
+            if cell.value is not None:
+                assert cell.font.name == "Georgia"
+
+    # an explicit snake_case request still wins over the saved setting
+    data = client.post("/api/export/xlsx", json={"font_name": "Arial", "show_dashboard": True}).data
+    book = load_workbook(_io.BytesIO(data))
+    assert "Dashboard" in book.sheetnames
+    assert book["Summary"]["A1"].font.name == "Arial"
+
+
+def test_export_prose_is_pluralised_not_parenthesised():
+    """The workbook is a document people read, so it must say "1 class" and
+    "3 classes" - never "1 class(es)" and never "3 classs"."""
+    from timetable.exporters import _plural, _word
+
+    assert _plural(1, "class") == "1 class"
+    assert _plural(3, "class") == "3 classes"          # not "classs"
+    assert _plural(2, "semester") == "2 semesters"
+    assert _word(1.0, "hour") == "hour"
+    assert _word(4.0, "hour") == "hours"
+
+    book = _book()
+    text = "\n".join(
+        str(cell.value)
+        for sheet in book.worksheets
+        for row in sheet.iter_rows()
+        for cell in row
+        if isinstance(cell.value, str)
+    )
+    assert "(s)" not in text.replace("Teacher(s)", "")     # only the column header keeps it
+    assert "classs" not in text
+    assert "1 classes" not in text and "3 class " not in text
+    assert "contact 3 hours" not in text                   # no duplicated number

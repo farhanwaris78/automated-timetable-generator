@@ -544,8 +544,9 @@
           <div class="form-grid">
             <label for="exportLayout">Layout</label>
             <select id="exportLayout">
-              <option value="grid">Grid — one page/sheet per day</option>
-              <option value="schedule" selected>Class Schedule — list by day</option>
+              <option value="book" selected>Semester book — one sheet per semester + roll-ups</option>
+              <option value="schedule">Class Schedule — a single printed page</option>
+              <option value="grid">Grid — room × time, one sheet per day</option>
             </select>
             <label for="exportFont">Font</label>
             <select id="exportFont">
@@ -572,11 +573,18 @@
               title block of the Class Schedule / grid export.</p>
           </div>
           <div class="export-include">
+            <label class="checkline"><input type="checkbox" id="exportContents" checked> Contents page (hyperlinked index)</label>
+            <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
             <label class="checkline"><input type="checkbox" id="exportShowSummary" checked> Summary sheet</label>
             <label class="checkline"><input type="checkbox" id="exportShowByTeacher" checked> By Teacher sheet</label>
+            <label class="checkline"><input type="checkbox" id="exportShowAudit" checked> Credit Hour Audit</label>
+            <label class="checkline"><input type="checkbox" id="exportShowDashboard" checked> Dashboard with charts</label>
+            <label class="checkline"><input type="checkbox" id="exportShowMasterData" checked> Master Data (courses, teachers, rooms)</label>
             <label class="checkline"><input type="checkbox" id="exportShowUnscheduled" checked> Unscheduled list</label>
-            <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
           </div>
+          <p class="muted">The three report sheets — Room Utilisation, Teacher Workload and Conflict Report — always
+            travel with the workbook. Per-weekday sheets and the extras are added by the <strong>Semester book</strong>
+            layout; <strong>Grid</strong> keeps the room × time view.</p>
           <p class="export-preview-wrap">
             <span class="export-preview-label">Title block preview</span>
             <code class="export-preview" aria-live="polite"></code>
@@ -587,6 +595,8 @@
         <div class="publish-actions">
           <button type="button" class="btn btn-accent" id="publishExcelBtn">Export Excel</button>
           <button type="button" class="btn" id="publishCsvBtn">Export CSV</button>
+          <button type="button" class="btn" id="publishCsvBundleBtn"
+                  title="One CSV per sheet: whole timetable, each semester, each weekday, by teacher, credit-hour audit">CSV bundle (.zip)</button>
           <button type="button" class="btn btn-primary" id="publishPdfBtn">Download PDF</button>
           <button type="button" class="btn" id="publishIcsBtn">Download .ics</button>
           <button type="button" class="btn" id="publishCopyBtn">Copy subscription link</button>

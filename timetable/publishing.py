@@ -708,10 +708,10 @@ def build_pdf(
         ``schedule``      - the printed Class Schedule (day-grouped vertical rows)
     Filter the ``entries`` before calling to publish a single teacher/section.
 
-    ``layout`` is ``schedule`` to use the printed Class Schedule look (a
-    metadata title block plus rows grouped by day, with ``credit_hours == 0``
-    courses shown as **non-credited course**); otherwise the grid scopes above
-    apply.
+    ``layout`` is ``schedule`` or ``book`` to use the printed Class Schedule
+    look (a metadata title block plus rows grouped by day, with
+    ``credit_hours == 0`` courses shown as **non-credited course**); otherwise
+    the grid scopes above apply.
 
     ``font_name`` is mapped to one of the PDF built-in fonts (Times New Roman
     / Georgia -> Times, Arial / Calibri -> Helvetica, Courier New -> Courier),
@@ -741,7 +741,7 @@ def build_pdf(
             commencement=commencement,
             semester=semester,
         )
-    if layout == "schedule":
+    if layout in ("schedule", "book"):
         return _build_schedule_pdf(
             entries,
             days=days,

@@ -46,7 +46,7 @@ Use it to:
 * schedule **theory lectures and laboratory sessions separately**, with their
   own credit hours;
 * produce **semester-wise timetables** — one worksheet or one PDF page per
-  semester;
+  semester, in the printed class-schedule arrangement;
 * **export the timetable to Excel (.xlsx), PDF, CSV** or a **live iCalendar
   feed** for Google Calendar, Outlook and Apple Calendar.
 
@@ -177,17 +177,25 @@ target a single semester, and both the Excel and PDF exports can be produced
   Capacity is a *warning*: it never blocks you from saving.
 
 ### Publish & share  <kbd>Ctrl+Shift+P</kbd>
-* **Excel** (<kbd>Ctrl+E</kbd>) — one colour-coded worksheet per day, **one
-  worksheet per semester** (day × section), plus `Summary` (auto-filtered),
-  `By Teacher` and an `Unscheduled` sheet when something is missing; landscape
-  and fit-to-width.
+* **Excel** (<kbd>Ctrl+E</kbd>) — the **semester book**: a hyperlinked
+  `Contents` page, an auto-filtered `Summary`, **one `Class Schedule` worksheet
+  per semester**, one per weekday, `By Teacher`, a `Credit Hour Audit`, a
+  `Dashboard` with real Excel charts, the three report sheets, `Master Data`
+  (courses, teachers, rooms) and an `Unscheduled` list. Every sheet carries the
+  printed Class Schedule arrangement — a document title block, one header row
+  that repeats on every printed page, day/section bands, AM/PM times and
+  page numbers. `Grid` layout is still there for the room × time facilities
+  view, and `Class Schedule` still gives a single hand-out page.
 * **PDF** — master grid (one page per day), or **one page per teacher**, per
   course section, **per semester**, or per room. Rendered by the app itself: vector text, real
   page boxes, no browser print dialog and no third-party PDF library.
 * **iCalendar** — download a `.ics` file, or copy the live
   `http://localhost:PORT/calendar.ics?teacher=…` subscription link into Google
   Calendar, Outlook or Apple Calendar and the timetable keeps itself up to date.
-* **CSV** and a print stylesheet as well.
+* **CSV** — the whole timetable, or a **CSV bundle (.zip)** with one file per
+  workbook sheet (`timetable.csv`, `semester-4.csv`, `monday.csv`,
+  `by-teacher.csv`, `credit-hour-audit.csv`, `unscheduled.csv`) for anyone who
+  cannot open a spreadsheet. Plus a print stylesheet.
 * **Everything is written next to your project file.** Once a project is saved
   to, say, `D:\Timetables\Spring 2026.ttproj`, the Excel workbook, PDFs, CSV
   and calendar all land in `D:\Timetables\` — not in your browser's Downloads
@@ -257,7 +265,7 @@ timetable/
 ├── services.py             domain logic, clash-detection engine, auto-fill
 ├── catalog.py              CRUD for teachers, buildings, rooms, courses, sections
 ├── projects.py             portable .ttproj files, recents, safety backups
-├── exporters.py            Excel workbook builder (one worksheet per day)
+├── exporters.py            Excel semester book: one sheet per semester + roll-ups
 ├── importers.py            Excel template + bulk import with per-row reporting
 ├── publishing.py           dependency-free PDF writer + iCalendar feed builder
 ├── web.py                  Flask app factory and JSON API
@@ -316,8 +324,9 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 | `GET` | `/api/admin/courses` | courses with their sections and teachers |
 | `POST`/`PUT`/`DELETE` | `/api/courses[/<id>]` | courses and course codes |
 | `POST`/`DELETE` | `/api/courses/<id>/sections[/<section>]` | sections |
-| `POST` | `/api/export/xlsx` | Excel workbook: one sheet per day *and* per semester (`folder` ⇒ saved to disk) |
+| `POST` | `/api/export/xlsx` | Excel semester book: Contents, one sheet per semester *and* per weekday, reports (`folder` ⇒ saved to disk) |
 | `POST` | `/api/export/csv` | CSV of the whole timetable (`folder` ⇒ saved to disk) |
+| `POST` | `/api/export/csv-bundle` | `.zip` with one CSV per workbook sheet (`folder` ⇒ saved to disk) |
 | `GET` | `/api/import/template` | blank import workbook |
 | `POST` | `/api/import/xlsx` | bulk import (multipart `file`) → per-row report |
 | `GET` | `/api/publish/targets` | teachers / sections / rooms that have classes |
@@ -447,11 +456,17 @@ two rooms at once. Any number of sections per course is supported.
 <details>
 <summary><strong>Can I export the timetable to Excel or PDF?</strong></summary>
 
-Yes — an `.xlsx` workbook with one colour-coded worksheet per day, one worksheet
-per semester, a summary sheet, a per-teacher sheet and a list of anything still
-unscheduled; PDFs for the master grid or per teacher, section, semester or room;
-CSV; a print stylesheet; and `.ics` calendar files plus a live subscription link
-for Google Calendar, Outlook and Apple Calendar.
+Yes — an `.xlsx` **semester book**: a hyperlinked `Contents` page, an
+auto-filtered `Summary`, **one Class Schedule worksheet per semester** (the
+printed layout: *Days, Course Code, Course Title, C.Hrs, Total No.of Students,
+Teacher's Name, Time, Room No*), one sheet per weekday, `By Teacher`, a
+`Credit Hour Audit`, a `Dashboard` with charts, `Room Utilisation`,
+`Teacher Workload`, `Conflict Report`, `Master Data` and `Unscheduled`. The
+room × time **Grid** layout and the single-page **Class Schedule** layout are
+still selectable. Alongside it: PDFs for the master grid or per teacher,
+section, semester or room; CSV or a zipped CSV bundle; a print stylesheet; and
+`.ics` calendar files plus a live subscription link for Google Calendar,
+Outlook and Apple Calendar.
 </details>
 
 <details>

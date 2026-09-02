@@ -281,7 +281,11 @@ def conflict_report(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "title": "Conflict Report",
         "headers": CONFLICT_HEADERS,
         "rows": unique,
-        "note": f"{errors} error(s) and {warnings} warning(s). Student-level clashes need the saved grid.",
+        "note": (
+            f"{errors} {'error' if errors == 1 else 'errors'} and "
+            f"{warnings} {'warning' if warnings == 1 else 'warnings'}. "
+            "Student-level clashes need the saved grid."
+        ),
     }
 
 

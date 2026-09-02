@@ -1,5 +1,95 @@
 # Changelog
 
+## 2.1.0 — the Excel export becomes a semester book
+
+The export was rewritten around the one thing a timetable is actually handed
+out as: **a batch's week**. Every semester now gets its own worksheet drawn in
+the printed *Class Schedule* arrangement from 2.0.3 — and the sheets the
+previous releases had (Summary, one per weekday, By Teacher, the three reports,
+the unscheduled list) are kept, re-drawn in that same arrangement instead of
+the old room × time grid.
+
+### One sheet per semester, arranged like the printed Class Schedule  📗
+
+* **Semester 1 … Semester *n*** — one worksheet per semester, using exactly the
+  reference columns *Days, Course Code, Course Title, C.Hrs, Total No.of
+  Students, Teacher's Name, Time, Room No*, rows grouped by day with the day
+  cell merged down its block and painted the day's pastel band, AM/PM times,
+  and **non-credited course** for anything with 0 credit hours.
+* Each semester sheet ends with a **totals strip**: classes, credit hours,
+  contact hours per week, sections, teachers and non-credited count.
+* **Monday … Sunday** sheets use the same eight columns, grouped by
+  *semester · section*, so a batch's whole day reads straight down one page. An
+  empty weekday says so instead of printing a blank grid.
+* **By Teacher** is now grouped and merged per teacher, in the same column set
+  (with *Day* in place of the repeated teacher name).
+* The old layouts did not disappear: **Class Schedule** still gives a single
+  printed page, and **Grid** still gives the room × time facilities view.
+  *Semester book* is the new default everywhere — the dialog, the API and the
+  desktop window.
+
+### New sheets that answer the questions the grid cannot  📊
+
+* **Contents** — a hyperlinked index of every sheet with its class count and a
+  one-line description; click a name to jump there.
+* **Credit Hour Audit** — per course-section, the catalogue's planned credit
+  hours against the contact hours the grid actually books, the difference, and
+  a status: `Complete`, `Short 1.5 h`, `Extra 0.5 h`, `Not scheduled` or
+  `Non-credited`. This is the sheet that catches a 3-credit course quietly
+  taught for 80 minutes a week.
+* **Dashboard** — the week at a glance (classes, contact hours, credit hours,
+  sections, teachers, rooms, non-credited, unscheduled, clashes) plus two real
+  Excel bar charts: room utilisation and teacher contact hours.
+* **Master Data** — the courses, teachers and rooms behind the grid, each with
+  their load, so the workbook is self-describing when it leaves your hands.
+
+### Everything reads like one document  🖨️
+
+* Every sheet carries the same **title block** (institution, name of program,
+  semester, commencement), repeats its header row on each printed page, fits
+  one page wide, and puts **"Page *n* of *N*"** in the footer.
+* Sheet tabs are **colour-coded by kind** — Contents navy, semester sheets
+  green, weekday sheets violet, By Teacher amber, reports red.
+* The **Summary** sheet gains a *C.Hrs* column and keeps its auto-filter; report
+  sheets now tint their status column (errors red, warnings amber, healthy
+  green) and are filterable.
+* The workbook's **document properties** (title, author, subject, keywords) are
+  filled in, so it is identifiable in a file manager or a document system.
+
+### CSV bundle  🗜️
+
+**Export & share → CSV bundle (.zip)** writes one CSV per workbook sheet —
+`timetable.csv`, `semester-<n>.csv`, one per weekday, `by-teacher.csv`,
+`credit-hour-audit.csv` and `unscheduled.csv` — for anyone (or any script) that
+cannot open a spreadsheet. Same delivery rules as every other export: written
+next to the project, never silently overwritten.
+
+### Fixed  🐛
+
+* **Saved export settings were ignored.** The dialog persisted its state under
+  camelCase keys (`fontName`, `showDashboard`) while the server looked for
+  snake_case (`font_name`, `show_dashboard`), so a font, institution or sheet
+  choice saved on one run never applied to the next. Both spellings are now
+  resolved, and an explicit request still wins over the saved setting. There is
+  a test that fails on the old behaviour.
+* **Charts would have rendered empty in Excel.** The dashboard's chart data
+  lives in hidden helper columns, and Excel skips hidden cells unless the chart
+  says otherwise — both charts now set `plotVisOnly = 0`.
+* **Tab colours were written without an alpha byte**, which Excel reads as
+  transparent; they are now full ARGB.
+
+* **The workbook spoke in "class(es)".** Every count in the export is now
+  properly inflected — "1 class", "3 classes", "4.0 contact hours" — instead of
+  the developer shorthand `1 class(es)` that leaked into printed documents.
+
+**Tests:** backend **172 passing** (was 157), including 15 new checks for the
+semester book (Contents hyperlinks, the reference arrangement, per-weekday
+grouping, the credit-hour audit, dashboard charts, master data, the sheet
+toggles, the font sweep, the CSV bundle, the settings round-trip and the
+pluralisation). The frontend jsdom suites now cover the layout drop-down, all
+eight sheet toggles and the CSV bundle button — **23 export-dialog checks**,
+all green.
+
 ## 2.0.3 — reports, per-day schedules, documents & full keyboard accessibility
 
 The biggest change since 2.0.2: the app can now *tell you what to fix* rather
