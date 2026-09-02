@@ -2104,10 +2104,33 @@
     $("#exportShowSemesters").checked = !!o.showSemesters;
   }
 
+  /* Build the title-block sentence the printed export will show, and live-update
+     a small preview in the Export & share dialog so the document identity
+     fields (institution, term, program, semester, commencement) visibly work. */
+  function documentPreviewText() {
+    readExportOptions();
+    var o = state.exportOptions;
+    var title = o.layout === "schedule" ? "Class Schedule" : "University Timetable";
+    if (o.term) title += " " + o.term;
+    var parts = [];
+    if (o.institution) parts.push(o.institution);
+    if (o.program) parts.push("Name of program: " + o.program);
+    if (o.semester) parts.push("Semester: " + o.semester);
+    if (o.commencement) parts.push("Commencement: " + o.commencement);
+    return parts.length ? title + " — " + parts.join(" · ") : title;
+  }
+
+  function updateExportPreview() {
+    var preview = $("#exportPreview");
+    if (!preview) return;
+    preview.textContent = documentPreviewText();
+  }
+
   function persistExportOptions() {
     readExportOptions();
     api("/api/settings", { method: "POST", body: { export: state.exportOptions } })
       .catch(function () { /* non fatal */ });
+    updateExportPreview();
   }
 
   /* The option keys the Python export/publish endpoints expect. */
@@ -2266,7 +2289,7 @@
     // The standalone desktop window has no web feed to subscribe to - tell the
     // user the calendar is exported as a file instead of showing a dead URL.
     if (window.__NATIVE__) {
-      link.textContent = "Desktop build: use “Export calendar” to save the .ics file.";
+      link.textContent = "This desktop build has no live web feed — use “Export calendar” to save the .ics file.";
       return;
     }
     var params = [];
@@ -2287,6 +2310,7 @@
       return;
     }
     writeExportOptionsToForm();
+    updateExportPreview();
     fillPublishFilter();
     openDialog("#publishDialog");
   }
@@ -3060,7 +3084,11 @@
      "#exportShowSummary", "#exportShowByTeacher", "#exportShowUnscheduled", "#exportShowSemesters"]
       .forEach(function (selector) {
         var field = $(selector);
-        if (field) field.addEventListener("change", persistExportOptions);
+        if (field) {
+          field.addEventListener("change", persistExportOptions);
+          // Live preview while typing; change handles persistence on blur.
+          field.addEventListener("input", updateExportPreview);
+        }
       });
 
     $("#downloadTemplateBtn").addEventListener("click", downloadTemplate);

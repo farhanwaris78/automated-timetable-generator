@@ -531,7 +531,11 @@
             <label class="checkline"><input type="checkbox" id="exportShowUnscheduled" checked> Unscheduled list</label>
             <label class="checkline"><input type="checkbox" id="exportShowSemesters" checked> One sheet per semester</label>
           </div>
-          <p class="muted">Courses with <strong>0 credit hours</strong> are written as <em>Non-credited</em> in the C.Hrs column.</p>
+          <p class="export-preview-wrap">
+            <span class="export-preview-label">Preview on the printed export</span>
+            <code id="exportPreview" class="export-preview" aria-live="polite"></code>
+          </p>
+          <p class="muted">Courses with <strong>0 credit hours</strong> are written as <em>non-credited course</em> in the C.Hrs column. The fields above appear on the title block of the Class Schedule / grid export.</p>
         </fieldset>
 
         <div class="publish-actions">

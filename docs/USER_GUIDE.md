@@ -205,7 +205,7 @@ matches your institution's style:
 | **Font** | the typeface applied to **every** cell and every PDF character — **Times New Roman** by default (also Arial, Calibri, Georgia, Courier New) |
 | **Font size** | the body text size (9–12) |
 | **Orientation** | landscape (default) or portrait for each printed page |
-| **Institution / Academic term** | a heading line on the summary, day and semester sheets, e.g. *City University · Spring 2026* |
+| **Document identity** | **Institution**, **Academic term** (season, e.g. *Spring 2026*), **Name of program**, **Semester** and **Commencement of classes** — printed on the title block of the Class Schedule / grid export. Typing them shows a live preview in the dialog. |
 | **Summary sheet** | the filterable class-by-class list |
 | **By Teacher sheet** | each teacher's personal week |
 | **Unscheduled list** | the gaps that still need a slot |
@@ -215,7 +215,7 @@ The choices are remembered between sessions, so once you set the font to Times
 New Roman it stays there for every later export.
 
 In the **Class Schedule** layout a class whose credit hours are **0** is shown
-as **“non-credited”** in the C.Hrs column automatically.
+as **“non-credited course”** in the C.Hrs column automatically.
 
 * **Download PDF** writes the file straight from the app — no browser print
   dialog, real vector text (Times, matching the workbook), and it looks the
