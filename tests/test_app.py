@@ -585,18 +585,62 @@ def test_export_is_written_into_the_requested_folder(client, tmp_path):
 
 
 @pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
-def test_repeated_exports_never_overwrite(client, tmp_path):
+def test_repeated_exports_are_versioned_instead_of_numbered(client, tmp_path):
+    """Three exports become rev1/rev2/rev3 - a name that says which is current,
+    rather than "timetable (2).xlsx" which says nothing at all."""
     _one_class(client)
-    first = client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()
-    second = client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()
-    third = client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()
-    assert Path(first["path"]).name == "timetable.xlsx"
-    assert Path(second["path"]).name == "timetable (2).xlsx"
-    assert Path(third["path"]).name == "timetable (3).xlsx"
+    names = [
+        Path(client.post("/api/export/xlsx", json={"folder": str(tmp_path)}).get_json()["path"]).name
+        for _ in range(3)
+    ]
+    assert names == ["timetable-rev1.xlsx", "timetable-rev2.xlsx", "timetable-rev3.xlsx"]
+    assert len(list(tmp_path.glob("*.xlsx"))) == 3          # nothing was overwritten
 
-    # ...unless the caller explicitly asks for it.
-    again = client.post("/api/export/xlsx", json={"folder": str(tmp_path), "overwrite": True}).get_json()
-    assert Path(again["path"]).name == "timetable.xlsx"
+    # The document name becomes the stem, so one folder can hold several terms.
+    named = client.post("/api/export/xlsx", json={
+        "folder": str(tmp_path), "document_name": "Spring 2026"}).get_json()
+    assert Path(named["path"]).name == "Spring 2026-rev1.xlsx"
+
+    # Turning versioning off brings back the old Explorer-style numbering.
+    plain = client.post("/api/export/xlsx", json={
+        "folder": str(tmp_path), "versioned": False}).get_json()
+    assert Path(plain["path"]).name == "timetable.xlsx"
+    plain_again = client.post("/api/export/xlsx", json={
+        "folder": str(tmp_path), "versioned": False}).get_json()
+    assert Path(plain_again["path"]).name == "timetable (2).xlsx"
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_a_new_revision_says_what_changed_since_the_last_one(client, tmp_path):
+    _one_class(client)
+    client.post("/api/export/xlsx", json={"folder": str(tmp_path), "document_name": "Spring 2026"})
+
+    # move the class to another day, then export again
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 3, "start_time": "08:30", "end_time": "09:50", "room_id": 2,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+    second = client.post("/api/export/xlsx", json={
+        "folder": str(tmp_path), "document_name": "Spring 2026"}).get_json()
+    assert Path(second["path"]).name == "Spring 2026-rev2.xlsx"
+
+    from openpyxl import load_workbook
+
+    book = load_workbook(Path(second["path"]))
+    assert book.sheetnames[0] == "Contents"
+    assert book.sheetnames[1] == "Revisions"
+    revisions = book["Revisions"]
+    assert revisions["A1"].value.endswith("Revision 2")
+
+    text = "\n".join(
+        str(cell.value)
+        for row in revisions.iter_rows()
+        for cell in row
+        if cell.value is not None
+    )
+    assert "What changed since Spring 2026-rev1.xlsx" in text
+    assert "Moved" in text                       # the class changed day
+    assert "rev 1" in text and "rev 2" in text   # both revisions are listed
 
 
 def test_csv_export_matches_the_workbook_columns(client, tmp_path):
@@ -1917,3 +1961,306 @@ def test_export_prose_is_pluralised_not_parenthesised():
     assert "classs" not in text
     assert "1 classes" not in text and "3 class " not in text
     assert "contact 3 hours" not in text                   # no duplicated number
+
+
+# ============= v2.2.0: free slots, load balancing, revisions, colour ========= #
+
+
+def _entry(day, start, end, room, code, name, section, teacher, *, semester=1,
+           credit=3, kind="theory", color="#a9d2e1", shift="morning", room_id=None,
+           lab=0, students=30):
+    rid = room_id if room_id is not None else hash(room) % 100 + 1
+    return {
+        "id": abs(hash((day, start, code, section, kind))) % 100000, "day": day,
+        "start_time": start, "end_time": end, "shift": shift,
+        "room_id": rid, "room_number": room, "room_label": f"B-{room}",
+        "building_name": "B", "room_type": "Classroom", "capacity": 60,
+        "course_id": abs(hash(code)) % 1000, "code": code, "course_name": name,
+        "color": color, "department": "CS", "credit_hours": credit,
+        "lab_credit_hours": lab, "section": section, "kind": kind,
+        "semester": semester, "instructor": teacher, "num_students": students,
+    }
+
+
+_TWO_ROOMS = [
+    {"id": 1, "room_number": "101", "label": "B-101", "capacity": 60, "room_type": "Classroom"},
+    {"id": 2, "room_number": "102", "label": "B-102", "capacity": 40, "room_type": "Lab"},
+]
+
+
+def _cell_fill(sheet, row, column):
+    cell = sheet.cell(row=row, column=column)
+    if not cell.fill or cell.fill.fill_type != "solid":
+        return ""
+    return str(cell.fill.fgColor.rgb or "")
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_free_slots_shows_every_batch_an_open_slot():
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    from timetable.exporters import BUSY_FILL, FREE_FILL, build_workbook
+
+    entries = [
+        _entry(1, "08:30", "09:50", "101", "CS3009", "AI", "A", "Dr A", semester=1, room_id=1),
+        _entry(1, "10:00", "11:20", "102", "CS4001", "ML", "B", "Dr B", semester=3, room_id=2),
+    ]
+    slots = [{"start": "08:30", "end": "09:50"}, {"start": "10:00", "end": "11:20"}]
+    book = load_workbook(_io.BytesIO(build_workbook(
+        entries, _TWO_ROOMS, days=2, slots=slots, show_summary=False, show_by_teacher=False,
+        show_audit=False, show_dashboard=False, show_master_data=False, show_balance=False)))
+
+    sheet = book["Free Slots"]
+    grid = {}
+    for row in range(1, sheet.max_row + 1):
+        first = sheet.cell(row=row, column=1).value
+        # only the per-batch matrix; the free-rooms table below also starts with
+        # a weekday name and must not overwrite it
+        if first in ("Monday", "Tuesday") and first not in grid:
+            grid[first] = [
+                (sheet.cell(row=row, column=2).value, _cell_fill(sheet, row, 2)),
+                (sheet.cell(row=row, column=3).value, _cell_fill(sheet, row, 3)),
+            ]
+    # Section A is booked at 8:30 and free at 10:00
+    assert grid["Monday"][0] == ("CS3009", BUSY_FILL)
+    assert grid["Monday"][1] == ("free", FREE_FILL)
+    # ...and the whole of Tuesday is open
+    assert grid["Tuesday"][0] == ("free", FREE_FILL)
+    assert grid["Tuesday"][1] == ("free", FREE_FILL)
+
+    # the free-rooms table names a room the coordinator can actually book
+    text = "\n".join(str(c.value) for r in sheet.iter_rows() for c in r if c.value is not None)
+    assert "Free rooms at each slot" in text
+    assert "B-102" in text
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_free_slots_turns_red_when_no_room_is_left():
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    from timetable.exporters import NO_ROOM_FILL, build_workbook
+
+    # Section A has nothing at 10:00, but section B already holds the only room.
+    entries = [
+        _entry(1, "10:00", "11:20", "101", "CS4001", "ML", "B", "Dr B", semester=3, room_id=1),
+        _entry(2, "08:30", "09:50", "101", "CS3009", "AI", "A", "Dr A", semester=1, room_id=1),
+    ]
+    slots = [{"start": "10:00", "end": "11:20"}]
+    book = load_workbook(_io.BytesIO(build_workbook(
+        entries, _TWO_ROOMS[:1], days=1, slots=slots, show_summary=False, show_by_teacher=False,
+        show_audit=False, show_dashboard=False, show_master_data=False, show_balance=False)))
+
+    sheet = book["Free Slots"]
+    found = [
+        (sheet.cell(row=r, column=2).value, _cell_fill(sheet, r, 2))
+        for r in range(1, sheet.max_row + 1)
+        if sheet.cell(row=r, column=1).value == "Monday"
+    ]
+    assert ("no room", NO_ROOM_FILL) in found
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_free_slots_and_balance_can_be_switched_off():
+    book = _book(show_free_slots=False, show_balance=False)
+    assert "Free Slots" not in book.sheetnames
+    assert "Load Balancing" not in book.sheetnames
+
+
+def test_load_balancing_suggests_a_move_only_to_someone_who_is_free():
+    from timetable.reports import load_balance_suggestions
+
+    entries = []
+    # Dr A teaches six back-to-back 2-hour blocks: 12 h, well over the 20 h line
+    # only when doubled, so push it past the threshold explicitly.
+    for index in range(11):
+        entries.append(_entry((index % 5) + 1, f"{8 + index // 5:02d}:00", f"{10 + index // 5:02d}:00",
+                              "101", f"CS{index:04d}", f"Course {index}", "A", "Dr A"))
+    entries.append(_entry(1, "14:00", "15:00", "102", "CS9000", "Light", "B", "Dr B"))
+
+    report = load_balance_suggestions(entries)
+    assert report["headers"][0] == "Over-loaded teacher"
+    assert report["moves"] >= 1
+    first = report["rows"][0]
+    assert first[0] == "Dr A"
+    assert first[6] == "Dr B"
+    # the move must leave the receiver no busier than the giver
+    giver_after, receiver_after = (float(part.strip().split()[0])
+                                   for part in first[8].split("/"))
+    assert receiver_after <= giver_after
+
+    # Dr B is busy 2-3 PM, so nothing may be suggested at that time
+    assert all(not (row[4] == "Monday" and row[5].startswith("2:00 PM")) for row in report["rows"])
+
+
+def test_load_balancing_says_so_when_the_load_is_already_even():
+    from timetable.reports import load_balance_suggestions
+
+    entries = [
+        _entry(1, "08:30", "09:50", "101", "CS3009", "AI", "A", "Dr A"),
+        _entry(1, "10:00", "11:20", "102", "CS4001", "ML", "B", "Dr B"),
+    ]
+    report = load_balance_suggestions(entries)
+    assert report["rows"] == []
+    assert "0 moves suggested" in report["note"]
+
+
+def test_the_balance_report_is_reachable_through_the_api(client):
+    client.post("/api/timetable", json={"assignments": [
+        {"day": 1, "start_time": "08:30", "end_time": "09:50", "room_id": 1,
+         "course_id": 101, "section": "A", "shift": "morning"},
+    ]})
+    response = client.post("/api/report/balance", json={"days": 5})
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["headers"][0] == "Over-loaded teacher"
+    assert "moves" in payload
+    assert client.post("/api/report/nonsense", json={}).status_code == 400
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_the_course_colour_follows_a_class_onto_every_sheet():
+    """The colour a course wears on the grid is the colour it wears in Excel, so
+    a subject can be followed down a page at a glance."""
+    from timetable.exporters import _tint
+
+    book = _book()
+    expected = _tint("#a9d2e1", 0.74)
+
+    semester = book["Semester 4"]
+    header = _header_row(semester)
+    assert _cell_fill(semester, header + 1, 3) == expected      # Course Title column
+
+    summary = book["Summary"]
+    summary_header = _header_row(summary, "Day")
+    assert _cell_fill(summary, summary_header + 1, 9) == expected   # Course column
+
+    master = book["Master Data"]
+    painted = [
+        _cell_fill(master, r, 3) for r in range(1, master.max_row + 1)
+        if master.cell(row=r, column=2).value == "CHEM4134"
+    ]
+    assert expected in painted
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_the_summary_marks_evening_and_non_credited_rows():
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    from timetable.exporters import EVENING_FILL, WATCH_FILL, build_workbook
+
+    entries = [
+        _entry(1, "08:30", "09:50", "101", "CS3009", "AI", "A", "Dr A", shift="morning"),
+        _entry(2, "18:00", "19:20", "101", "CS4001", "ML", "B", "Dr B", shift="evening"),
+        _entry(3, "10:00", "11:00", "101", "CS5000", "Quran", "C", "Dr C", credit=0),
+    ]
+    book = load_workbook(_io.BytesIO(build_workbook(entries, _TWO_ROOMS[:1], days=5)))
+    sheet = book["Summary"]
+    header = _header_row(sheet, "Day")
+    fills = {
+        str(sheet.cell(row=r, column=2).value): _cell_fill(sheet, r, 2)
+        for r in range(header + 1, header + 1 + len(entries))
+    }
+    assert fills["Evening"] == EVENING_FILL
+    assert fills["Morning"] != EVENING_FILL
+
+    # the 0-credit course is flagged in the C.Hrs column
+    hours_fills = {
+        sheet.cell(row=r, column=5).value: _cell_fill(sheet, r, 5)
+        for r in range(header + 1, header + 1 + len(entries))
+    }
+    assert hours_fills[0] == WATCH_FILL
+
+
+@pytest.mark.skipif(not openpyxl_available(), reason="openpyxl not installed")
+def test_the_contents_page_is_colour_coded_by_kind_of_sheet():
+    from timetable.exporters import TAB_COLOURS, _tint
+
+    book = _book()
+    contents = book["Contents"]
+    header = _header_row(contents, "Sheet")
+    rows = {
+        contents.cell(row=r, column=1).value: _cell_fill(contents, r, 1)
+        for r in range(header + 1, contents.max_row + 1)
+        if contents.cell(row=r, column=1).value
+    }
+    assert rows["Semester 4"] == _tint(TAB_COLOURS["semester"][-6:], 0.82)
+    assert rows["Monday"] == _tint(TAB_COLOURS["day"][-6:], 0.82)
+    assert rows["Conflict Report"] == _tint(TAB_COLOURS["report"][-6:], 0.82)
+    assert rows["Semester 4"] != rows["Monday"]      # the kinds really differ
+
+
+def test_diff_summaries_catches_every_kind_of_change():
+    from timetable.exporters import diff_summaries
+
+    def row(code, name, section, day, start, room, teacher, kind="Theory"):
+        return {"Code": code, "Course": name, "Section": section, "Type": kind,
+                "Day": day, "Start": start, "End": "09:50 AM", "Room": room,
+                "Teacher": teacher}
+
+    before = [
+        row("CS1", "One", "A", "Monday", "08:30 AM", "A-101", "Dr A"),
+        row("CS2", "Two", "A", "Tuesday", "10:00 AM", "A-102", "Dr B"),
+        row("CS3", "Three", "B", "Wednesday", "09:00 AM", "A-103", "Dr C"),
+        row("CS4", "Four", "C", "Monday", "08:30 AM", "A-104", "Dr D"),
+        row("CS4", "Four", "C", "Thursday", "11:00 AM", "A-104", "Dr D"),
+        row("CS6", "Six", "E", "Friday", "09:00 AM", "A-106", "Dr F"),   # disappears
+    ]
+    after = [
+        row("CS1", "One", "A", "Wednesday", "08:30 AM", "A-101", "Dr A"),   # moved
+        row("CS2", "Two", "A", "Tuesday", "10:00 AM", "B-201", "Dr B"),     # re-roomed
+        row("CS3", "Three", "B", "Wednesday", "09:00 AM", "A-103", "Dr Z"),  # re-taught
+        row("CS4", "Four", "C", "Monday", "08:30 AM", "A-104", "Dr D"),     # untouched
+        row("CS4", "Four", "C", "Friday", "11:00 AM", "A-104", "Dr D"),     # second meeting moved
+        row("CS5", "Five", "D", "Thursday", "12:00 PM", "A-105", "Dr E"),   # added
+    ]
+    kinds = {kind for kind, _ in diff_summaries(before, after)}
+    assert kinds == {"Added", "Removed", "Moved", "Room changed", "Teacher changed"}
+
+    changes = dict((text.split(" — ")[0], kind) for kind, text in diff_summaries(before, after))
+    # the two weekly meetings of CS4 are tracked separately: one kept, one moved
+    cs4 = [text for kind, text in diff_summaries(before, after) if "CS4" in text]
+    assert len(cs4) == 2
+    assert "CS5 Five · Section D" in changes
+
+
+def test_a_workbook_written_by_the_app_can_be_read_back_for_the_diff():
+    import io as _io
+
+    from timetable.exporters import build_workbook, diff_summaries, read_summary_rows
+
+    data = build_workbook(_schedule_entries(), _SCHEDULE_ROOMS, days=5)
+    rows = read_summary_rows(data)
+    assert len(rows) == 3
+    assert rows[0]["Day"] == "Monday"
+    assert rows[0]["Course"] == "Special Paper - I"
+    # comparing a workbook with itself reports no changes at all
+    assert diff_summaries(rows, rows) == []
+    # garbage in, empty list out - a bad file must never break an export
+    assert read_summary_rows(b"not a workbook") == []
+
+
+def test_revision_numbering_comes_from_what_is_already_in_the_folder(tmp_path):
+    from timetable.filesystem import next_revision, revision_files
+
+    assert next_revision(tmp_path, "Spring 2026")["revision"] == 1
+    (tmp_path / "Spring 2026-rev1.xlsx").write_bytes(b"x" * 41832)
+    (tmp_path / "Spring 2026-rev2.xlsx").write_bytes(b"y")
+    (tmp_path / "Autumn 2025-rev7.xlsx").write_bytes(b"z")
+    (tmp_path / "notes.txt").write_text("ignored")
+
+    info = next_revision(tmp_path, "Spring 2026")
+    assert info["revision"] == 3
+    assert info["filename"] == "Spring 2026-rev3.xlsx"
+    assert info["previous"] == "Spring 2026-rev2.xlsx"
+    assert [item["revision"] for item in info["history"]] == [1, 2]
+    assert info["history"][0]["size"] == "41 KB"
+
+    # a different document in the same folder gets its own numbering
+    assert next_revision(tmp_path, "Autumn 2025")["filename"] == "Autumn 2025-rev8.xlsx"
+    assert [item["name"] for item in revision_files(tmp_path, "notes", ".txt")] == []

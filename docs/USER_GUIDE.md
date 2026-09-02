@@ -221,6 +221,8 @@ matches your institution's style:
 | **One sheet per semester** | the batch view, in the printed class-schedule arrangement |
 | **Summary sheet** | the filterable class-by-class list |
 | **By Teacher sheet** | each teacher's personal week, merged per teacher |
+| **Free Slots** | the open-slot matrix per batch, plus free rooms per slot |
+| **Load Balancing** | which classes to move, and to whom |
 | **Credit Hour Audit** | planned credit hours vs. contact hours actually on the grid |
 | **Dashboard with charts** | the week's headline numbers plus two Excel charts |
 | **Master Data** | the courses, teachers and rooms behind the grid |
@@ -241,6 +243,8 @@ document, in this order:
 | **Semester 1 … Semester *n*** | **one sheet per semester**: the printed class schedule (*Days, Course Code, Course Title, C.Hrs, Total No.of Students, Teacher's Name, Time, Room No*), rows grouped by day with the day cell merged and banded, then a totals strip (classes, credit hours, contact hours, sections, teachers, non-credited) |
 | **Monday … Sunday** | one sheet per weekday, the same eight columns, rows grouped by *semester · section* so a batch's whole day reads straight down |
 | **By Teacher** | the same eight columns grouped by teacher, with the day instead of the teacher repeated |
+| **Free Slots** | a green/amber matrix per batch — one row per weekday, one column per slot. Green **free**, amber = booked (showing the blocking course), red **no room** = the batch is free but every room is taken. Below it, **Free rooms at each slot** names the rooms and seats available |
+| **Load Balancing** | concrete moves: *over-loaded teacher → which class → suggested teacher → hours after the move*. A move is only suggested when that teacher is free at exactly that time and ends up no busier than the giver |
 | **Credit Hour Audit** | per course-section: planned credit hours vs. contact hours on the grid, the difference, and a status — `Complete`, `Short 1.5 h`, `Extra …`, `Not scheduled` or `Non-credited` |
 | **Dashboard** | scheduled classes, contact hours, sections, teachers, rooms, non-credited classes, unscheduled count and clash count, plus two bar charts (room utilisation and teacher hours) |
 | **Room Utilisation** | free vs. busy hours per room, flagging rooms under 50% used |
@@ -248,6 +252,27 @@ document, in this order:
 | **Conflict Report** | every clash, errors first, with the issue spelled out |
 | **Master Data** | the courses, teachers and rooms behind the grid |
 | **Unscheduled** | every class the catalogue expects that the grid does not have |
+| **Revisions** | second sheet in the book when versioned names are on: the revision history plus what changed since the last export |
+
+### Versioned exports
+
+Tick **Versioned file names** and each export is numbered from what is already
+in the folder — `Spring 2026-rev1.xlsx`, `-rev2`, `-rev3` — so nothing is ever
+overwritten and the name says which copy is current. The stem comes from the
+**Export file name** field under *Document*. Each file carries a **Revisions**
+sheet with the history and a change list colour-coded by kind (green added, red
+removed, amber moved / re-roomed / re-taught); the changes are worked out by
+reading the previous revision's Summary sheet back out of the file.
+
+### What the colours mean
+
+| Colour | Meaning |
+|---|---|
+| A course's own colour | identity — the same colour it wears on the grid, lightened so the text stays readable. Used on the semester, weekday, teacher, Summary and Master Data sheets |
+| Pastel per weekday | the day grouping on semester sheets and the Contents page |
+| Green | free · balanced · complete · a suggested move · the current revision |
+| Amber | needs a look: short on hours · under-used · evening shift · non-credited · moved or re-roomed |
+| Red | stop: a clash · a slot with no free room · not scheduled · over-loaded |
 
 Every sheet gets the same title block (institution, program, semester,
 commencement), repeats its header row on each printed page, fits one page wide,

@@ -90,12 +90,21 @@ setTimeout(() => {
   [
     "exportContents", "exportShowSemesters", "exportShowSummary", "exportShowByTeacher",
     "exportShowAudit", "exportShowDashboard", "exportShowMasterData", "exportShowUnscheduled",
+    "exportShowFreeSlots", "exportShowBalance", "exportVersioned",
   ].forEach((id) => {
     const box = $("#" + id);
     check("sheet toggle #" + id + " is present and on", !!box && box.checked === true);
   });
 
   check("a CSV bundle button is offered", !!$("#publishCsvBundleBtn"));
+
+  // Versioned names need somewhere to type the document name.
+  const docName = $("#exportDocumentName");
+  check("the export file name can be set", !!docName);
+  if (docName) {
+    docName.value = "Spring 2026";
+    docName.dispatchEvent(new window.Event("input", { bubbles: true }));
+  }
 
   // Toggling a sheet off must be persisted for the next run: the change event
   // re-reads the form and POSTs the dialog state to /api/settings.
@@ -106,6 +115,21 @@ setTimeout(() => {
   check("the other sheet toggles are persisted too",
     !!lastSettings && lastSettings.layout === "book" && lastSettings.showAudit === true,
     JSON.stringify(lastSettings || null));
+  check("the free-slots, balancing and versioning options are persisted",
+    !!lastSettings && lastSettings.showFreeSlots === true && lastSettings.showBalance === true &&
+    lastSettings.versioned === true, JSON.stringify(lastSettings || null));
+  check("the export file name is persisted",
+    !!lastSettings && lastSettings.documentName === "Spring 2026",
+    lastSettings && lastSettings.documentName);
+
+  const reportScopes = Array.prototype.map.call(
+    ($("#reportScope") || { options: [] }).options, (o) => o.value);
+  check("the Reports dialog offers load balancing", reportScopes.indexOf("balance") !== -1,
+    reportScopes.join(","));
+  const publishScopes = Array.prototype.map.call(
+    ($("#publishScope") || { options: [] }).options, (o) => o.value);
+  check("the PDF dialog does not offer a scope the PDF writer cannot draw",
+    publishScopes.indexOf("balance") === -1, publishScopes.join(","));
 
   const failing = results.filter((r) => !r.pass);
   results.forEach((r) => console.log((r.pass ? "  PASS  " : "  FAIL  ") + r.name +

@@ -14,6 +14,7 @@ import errno
 import io
 import logging
 import logging.handlers
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,8 +26,16 @@ from . import __version__
 from .config import Settings, bundle_dir, load_settings
 from .catalog import CatalogService
 from .db import DatabaseError, init_database, reset_database
-from .exporters import build_csv, build_csv_bundle, build_workbook, openpyxl_available
-from .reports import conflict_report, room_utilisation, teacher_workload
+from .exporters import (
+    build_csv,
+    build_csv_bundle,
+    build_workbook,
+    diff_summaries,
+    openpyxl_available,
+    read_summary_rows,
+    summary_records,
+)
+from .reports import conflict_report, load_balance_suggestions, room_utilisation, teacher_workload
 from .filesystem import (
     FileSystemError,
     default_export_dir,
@@ -35,6 +44,7 @@ from .filesystem import (
     list_folder,
     list_roots,
     quick_places,
+    next_revision,
     require_writable,
     resolve_dir,
     resolve_target,
@@ -85,6 +95,37 @@ def _camel_case(key: str) -> str:
     """
     head, *tail = str(key).split("_")
     return head + "".join(part[:1].upper() + part[1:] for part in tail)
+
+
+_UNSAFE_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def _safe_document_base(name: str, payload: dict[str, Any]) -> str:
+    """The stem for versioned exports: the document name, else the project name.
+
+    Sanitised rather than rejected - a stray character in the document title
+    must not stop somebody exporting their timetable.
+    """
+    candidate = str(name or payload.get("title") or "").strip()
+    if not candidate or candidate.lower() == "university timetable":
+        candidate = str(payload.get("document_name") or payload.get("project") or "").strip()
+    cleaned = _UNSAFE_NAME_CHARS.sub("", candidate).strip(" .")
+    return (cleaned[:120] or "timetable").strip() or "timetable"
+
+
+def _revision_history(revision_info: dict[str, Any], classes: int) -> list[dict[str, Any]]:
+    """Past revisions plus the one being written right now."""
+    if not revision_info:
+        return []
+    history = [dict(item) for item in revision_info.get("history") or []]
+    history.append({
+        "revision": revision_info.get("revision"),
+        "name": revision_info.get("filename", ""),
+        "modified": datetime.now().strftime("%d %b %Y %H:%M"),
+        "classes": classes,
+        "size": "—",
+    })
+    return history
 
 
 def _file_in_use_message(target: Path, exc: OSError) -> str:
@@ -708,13 +749,18 @@ def create_app(settings: Settings | None = None) -> Flask:
         # a brand-new "Spring 2026" folder works without a separate mkdir.
         return resolve_dir(raw, must_exist=False)
 
-    def _deliver(data: bytes, payload: dict[str, Any], *, filename: str, mimetype: str):
+    def _deliver(data: bytes, payload: dict[str, Any], *, filename: str, mimetype: str,
+                 prefer_name: bool = False):
         """Write the export next to the project (or stream it as a download).
 
         Exports go **exactly where the user chose to save the project** - the
         same folder the .ttproj lives in - rather than the browser's download
         folder.  Existing files are never silently clobbered: the name gets a
         ``(2)`` suffix, just like Windows Explorer.
+
+        ``prefer_name`` makes the caller's ``filename`` win over whatever the
+        browser suggested - used for versioned exports, where the server (not
+        the page) knows the right revision number.
         """
         folder = _delivery_folder(payload)
         if folder is None:
@@ -728,7 +774,7 @@ def create_app(settings: Settings | None = None) -> Flask:
 
         ensure_folder(folder)
         require_writable(folder)
-        name = validate_name(str(payload.get("filename") or filename))
+        name = validate_name(str(filename if prefer_name else (payload.get("filename") or filename)))
         target = folder / name
         if not bool(payload.get("overwrite")):
             target = unique_path(target)
@@ -811,6 +857,10 @@ def create_app(settings: Settings | None = None) -> Flask:
             "show_dashboard": bool(pick("show_dashboard", True)),
             "show_master_data": bool(pick("show_master_data", True)),
             "contents": bool(pick("contents", True)),
+            "show_free_slots": bool(pick("show_free_slots", True)),
+            "show_balance": bool(pick("show_balance", True)),
+            "versioned": bool(pick("versioned", True)),
+            "document_name": str(pick("document_name", "") or ""),
         }
 
     @app.post("/api/export/xlsx")
@@ -824,6 +874,24 @@ def create_app(settings: Settings | None = None) -> Flask:
         entries, assignments = _export_entries(payload)
         svc = service()
         style = _export_style(payload)
+
+        # ---- versioned file names ------------------------------------- #
+        # "Spring 2026-rev3.xlsx" beats "timetable (2).xlsx": the revision
+        # number comes from what is already in the folder, and the previous
+        # revision is read back so the new file can say what changed.
+        revision_info: dict[str, Any] = {}
+        changes: list[tuple[str, str]] = []
+        if style["versioned"] and _delivery_folder(payload) is not None:
+            base = _safe_document_base(style["document_name"], payload)
+            revision_info = next_revision(_delivery_folder(payload), base, ".xlsx")
+            if revision_info["previous_path"]:
+                try:
+                    previous_rows = read_summary_rows(Path(revision_info["previous_path"]).read_bytes())
+                except OSError:
+                    previous_rows = []
+                if previous_rows:
+                    changes = diff_summaries(previous_rows, summary_records(entries))
+
         workbook = build_workbook(
             entries,
             svc.list_rooms(),
@@ -849,7 +917,22 @@ def create_app(settings: Settings | None = None) -> Flask:
             show_dashboard=style["show_dashboard"],
             show_master_data=style["show_master_data"],
             contents=style["contents"],
+            show_free_slots=style["show_free_slots"],
+            show_balance=style["show_balance"],
+            revision=int(revision_info.get("revision") or 0),
+            revision_file=str(revision_info.get("filename") or ""),
+            revision_history=_revision_history(revision_info, len(entries)),
+            revision_changes=changes,
+            revision_previous=str(revision_info.get("previous") or ""),
         )
+        if revision_info:
+            return _deliver(
+                workbook,
+                payload,
+                filename=revision_info["filename"],
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                prefer_name=True,
+            )
         return _deliver(
             workbook,
             payload,
@@ -906,8 +989,12 @@ def create_app(settings: Settings | None = None) -> Flask:
             report = teacher_workload(entries)
         elif scope == "conflict":
             report = conflict_report(entries)
+        elif scope == "balance":
+            report = load_balance_suggestions(entries)
         else:
-            raise ValidationError("report scope must be utilisation, workload or conflict.")
+            raise ValidationError(
+                "report scope must be utilisation, workload, conflict or balance."
+            )
         return jsonify({"ok": True, **report, "entries": len(entries)})
 
     # ---- bulk import (Excel) ---------------------------------------------- #

@@ -180,8 +180,11 @@ target a single semester, and both the Excel and PDF exports can be produced
 * **Excel** (<kbd>Ctrl+E</kbd>) — the **semester book**: a hyperlinked
   `Contents` page, an auto-filtered `Summary`, **one `Class Schedule` worksheet
   per semester**, one per weekday, `By Teacher`, a `Credit Hour Audit`, a
-  `Dashboard` with real Excel charts, the three report sheets, `Master Data`
-  (courses, teachers, rooms) and an `Unscheduled` list. Every sheet carries the
+  `Dashboard` with real Excel charts, **`Free Slots`** (where a class can go),
+  **`Load Balancing`** (who should take it), the three report sheets,
+  `Master Data` (courses, teachers, rooms), an `Unscheduled` list and — when
+  versioned names are on — a **`Revisions`** sheet saying what changed since the
+  last export. Every sheet carries the
   printed Class Schedule arrangement — a document title block, one header row
   that repeats on every printed page, day/section bands, AM/PM times and
   page numbers. `Grid` layout is still there for the room × time facilities
@@ -192,6 +195,13 @@ target a single semester, and both the Excel and PDF exports can be produced
 * **iCalendar** — download a `.ics` file, or copy the live
   `http://localhost:PORT/calendar.ics?teacher=…` subscription link into Google
   Calendar, Outlook or Apple Calendar and the timetable keeps itself up to date.
+* **Versioned file names** — `Spring 2026-rev3.xlsx` instead of
+  `timetable (2).xlsx`. The revision number comes from what is already in the
+  folder, so nothing is overwritten, and each file carries a **Revisions** sheet
+  listing what changed since the previous one (`Added`, `Removed`, `Moved`,
+  `Room changed`, `Teacher changed`).
+* **Colour that means something** — a course wears its own colour on every
+  sheet, green = free/balanced, amber = needs a look, red = clash or no room.
 * **CSV** — the whole timetable, or a **CSV bundle (.zip)** with one file per
   workbook sheet (`timetable.csv`, `semester-4.csv`, `monday.csv`,
   `by-teacher.csv`, `credit-hour-audit.csv`, `unscheduled.csv`) for anyone who
@@ -327,6 +337,7 @@ Press <kbd>F1</kbd> in the app for the authoritative list.
 | `POST` | `/api/export/xlsx` | Excel semester book: Contents, one sheet per semester *and* per weekday, reports (`folder` ⇒ saved to disk) |
 | `POST` | `/api/export/csv` | CSV of the whole timetable (`folder` ⇒ saved to disk) |
 | `POST` | `/api/export/csv-bundle` | `.zip` with one CSV per workbook sheet (`folder` ⇒ saved to disk) |
+| `POST` | `/api/report/balance` | load-balancing suggestions as JSON |
 | `GET` | `/api/import/template` | blank import workbook |
 | `POST` | `/api/import/xlsx` | bulk import (multipart `file`) → per-row report |
 | `GET` | `/api/publish/targets` | teachers / sections / rooms that have classes |

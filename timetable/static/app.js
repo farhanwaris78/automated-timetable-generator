@@ -91,7 +91,8 @@
       layout: "book", fontName: "Times New Roman", fontSize: 10, orientation: "landscape",
       institution: "", term: "", program: "", semester: "", commencement: "",
       showSummary: true, showByTeacher: true, showUnscheduled: true, showSemesters: true,
-      showAudit: true, showDashboard: true, showMasterData: true, contents: true
+      showAudit: true, showDashboard: true, showMasterData: true, contents: true,
+      showFreeSlots: true, showBalance: true, versioned: true, documentName: ""
     }
   };
 
@@ -2154,7 +2155,11 @@
       showAudit: $("#exportShowAudit").checked,
       showDashboard: $("#exportShowDashboard").checked,
       showMasterData: $("#exportShowMasterData").checked,
-      contents: $("#exportContents").checked
+      contents: $("#exportContents").checked,
+      showFreeSlots: $("#exportShowFreeSlots").checked,
+      showBalance: $("#exportShowBalance").checked,
+      versioned: $("#exportVersioned").checked,
+      documentName: ($("#exportDocumentName").value || "").trim()
     };
   }
 
@@ -2182,6 +2187,10 @@
     $("#exportShowDashboard").checked = o.showDashboard !== false;
     $("#exportShowMasterData").checked = o.showMasterData !== false;
     $("#exportContents").checked = o.contents !== false;
+    $("#exportShowFreeSlots").checked = o.showFreeSlots !== false;
+    $("#exportShowBalance").checked = o.showBalance !== false;
+    $("#exportVersioned").checked = o.versioned !== false;
+    $("#exportDocumentName").value = o.documentName || "";
   }
 
   /* Build the title-block sentence the printed export will show, and live-update
@@ -2254,15 +2263,20 @@
       show_audit: state.exportOptions.showAudit,
       show_dashboard: state.exportOptions.showDashboard,
       show_master_data: state.exportOptions.showMasterData,
-      contents: state.exportOptions.contents
+      contents: state.exportOptions.contents,
+      show_free_slots: state.exportOptions.showFreeSlots,
+      show_balance: state.exportOptions.showBalance,
+      versioned: state.exportOptions.versioned,
+      document_name: state.exportOptions.documentName
     };
   }
 
   function exportExcel() {
     if (!state.placements.length) { toast("Nothing to export", "Schedule at least one class first.", "warning"); return; }
-    toast("Building workbook", "Contents, one sheet per semester, per weekday, reports…", "info", 2500);
+    toast("Building workbook", "Contents, one sheet per semester, free slots, reports…", "info", 2500);
     runExport("/api/export/xlsx", exportBody(exportStyleBody()), "timetable.xlsx",
-      "Excel exported — Contents, one sheet per semester, one per weekday, By Teacher and the reports.")
+      "Excel exported — Contents, one sheet per semester, one per weekday, Free Slots, " +
+      "Load Balancing and the reports.")
       .catch(function (err) { toast("Excel export failed", err.message, "error"); });
   }
 
@@ -3319,7 +3333,8 @@
     ["#exportLayout", "#exportFont", "#exportSize", "#exportOrientation", "#exportInstitution", "#exportTerm",
      "#exportProgram", "#exportSemester", "#exportCommencement", "#exportSeason", "#exportTermYear",
      "#exportShowSummary", "#exportShowByTeacher", "#exportShowUnscheduled", "#exportShowSemesters",
-     "#exportShowAudit", "#exportShowDashboard", "#exportShowMasterData", "#exportContents"]
+     "#exportShowAudit", "#exportShowDashboard", "#exportShowMasterData", "#exportContents",
+     "#exportShowFreeSlots", "#exportShowBalance", "#exportVersioned", "#exportDocumentName"]
       .forEach(function (selector) {
         var field = $(selector);
         if (field) {

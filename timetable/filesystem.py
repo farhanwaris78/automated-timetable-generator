@@ -25,6 +25,7 @@ no string concatenation of paths.
 from __future__ import annotations
 
 import os
+import re
 import string
 import sys
 from dataclasses import dataclass
@@ -226,6 +227,76 @@ def unique_path(target: Path) -> Path:
             return candidate
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return parent / f"{stem} {stamp}{suffix}"
+
+
+# --------------------------------------------------------------------------- #
+# versioned exports: "<name>-rev<N>.xlsx"
+# --------------------------------------------------------------------------- #
+def human_size(size: int) -> str:
+    """``41832`` -> ``41 KB`` - for the revision history table."""
+    value = float(max(0, int(size or 0)))
+    for unit in ("B", "KB", "MB", "TB"):
+        if value < 1024 or unit == "TB":
+            return f"{value:.0f} {unit}"
+        value /= 1024.0
+    return f"{value:.0f} TB"
+
+
+_REVISION_RE = re.compile(r"^(?P<base>.+)-rev(?P<rev>\d+)$", re.IGNORECASE)
+
+
+def revision_files(folder: Path, base: str, suffix: str = ".xlsx") -> list[dict[str, Any]]:
+    """Existing ``<base>-rev<N><suffix>`` files in ``folder``, oldest revision first.
+
+    Used both to pick the next revision number and to fill in the revision
+    history table on the export's own Revisions sheet.
+    """
+    if not folder or not Path(folder).is_dir():
+        return []
+    wanted = str(base or "").strip().lower()
+    found: list[dict[str, Any]] = []
+    for path in Path(folder).iterdir():
+        if not path.is_file() or path.suffix.lower() != suffix.lower():
+            continue
+        match = _REVISION_RE.match(path.stem)
+        if not match or match.group("base").lower() != wanted:
+            continue
+        try:
+            modified = datetime.fromtimestamp(path.stat().st_mtime).strftime("%d %b %Y %H:%M")
+            size = path.stat().st_size
+        except OSError:
+            modified, size = "", 0
+        found.append({
+            "revision": int(match.group("rev")),
+            "name": path.name,
+            "path": str(path),
+            "modified": modified,
+            "size": human_size(size),
+            "bytes": size,
+        })
+    found.sort(key=lambda item: item["revision"])
+    return found
+
+
+def next_revision(folder: Path, base: str, suffix: str = ".xlsx") -> dict[str, Any]:
+    """Work out what the next versioned export should be called.
+
+    Returns ``{"revision": N, "filename": "<base>-rev<N>.xlsx", "history": [...],
+    "previous": "<the file before this one or ''>"}``.  Numbering comes from what
+    is already in the folder, so two people exporting into the same shared
+    folder never overwrite each other's work.
+    """
+    safe_base = str(base or "timetable").strip() or "timetable"
+    history = revision_files(folder, safe_base, suffix)
+    revision = (history[-1]["revision"] + 1) if history else 1
+    return {
+        "revision": revision,
+        "filename": f"{safe_base}-rev{revision}{suffix}",
+        "history": history,
+        "previous": history[-1]["name"] if history else "",
+        "previous_path": history[-1]["path"] if history else "",
+        "base": safe_base,
+    }
 
 
 # --------------------------------------------------------------------------- #

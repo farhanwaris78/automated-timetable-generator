@@ -1,5 +1,88 @@
 # Changelog
 
+## 2.2.0 — free slots, load balancing, versioned exports and a colour language
+
+Three of the things a coordinator actually does with a timetable — find a home
+for a class, even out the teaching load, and publish a revision — now have
+sheets of their own. The whole workbook also got a deliberate colour system.
+
+### Free Slots — where a class can go  🟩
+
+A green/amber matrix per batch: one row per weekday, one column per slot.
+
+* **Green "free"** — that batch has nothing in that slot.
+* **Amber** — already booked, showing the course code that is blocking it.
+* **Red "no room"** — the batch is free but *every* room is already taken, so
+  the slot is not actually usable. This is the case that wastes a coordinator's
+  time, and it is now visible at a glance.
+* A **Free slots** count per day, and a second table — **Free rooms at each
+  slot** — naming the free rooms and their total seats, so placing the class
+  needs no further looking-up.
+* Times overlap properly: a 90-minute lab counts against every slot it touches.
+
+### Load Balancing — who should take it  ⚖️
+
+A concrete, printable list of moves instead of a workload table you have to
+reason about yourself:
+
+> *Dr A (22.0 h) — move CS3009 Artificial Intelligence, Section A, Monday
+> 8:30 AM → **Dr B** (4.0 h) — after the move 20.0 h / 6.0 h*
+
+A suggestion is only made when the receiving teacher is **free at exactly that
+day and time** and would end up **no busier than the giver**, so every move
+shrinks the spread. Moves are applied tentatively as they are listed, so two
+suggestions never assume the same free hours. The same report is available in
+the **Reports** dialog and at `POST /api/report/balance`.
+
+### Versioned exports — `Spring 2026-rev3.xlsx`  🔢
+
+`timetable (2).xlsx` told you nothing about which copy was current. Exports are
+now numbered by what is already in the folder:
+
+* `Spring 2026-rev1.xlsx`, `-rev2`, `-rev3` … — nothing is ever overwritten, and
+  two people exporting into the same shared folder cannot collide.
+* The file name comes from the new **Export file name** field in the Document
+  panel (falling back to the project name, then `timetable`).
+* A new **Revisions** sheet, second in the workbook, carries the revision
+  history (rev, file, date, classes, size — the current one highlighted) and a
+  **What changed since `Spring 2026-rev2.xlsx`** list:
+  `Added` (green), `Removed` (red), `Moved`, `Room changed`, `Teacher changed`
+  (amber).
+* The change list is real: the previous revision's Summary sheet is read back
+  out of the file and diffed. Two weekly meetings of the same course are tracked
+  separately, so moving one is not reported as moving both.
+* Switch it off with the **Versioned file names** checkbox to get the old
+  Explorer-style `(2)` numbering back.
+
+### A colour language, not decoration  🎨
+
+Colours now mean the same thing on every sheet:
+
+| Colour | Meaning |
+|---|---|
+| The course's own colour | identity — the same colour the class wears on the grid, lightened so black text stays readable. Applied to the Course Title on the semester, weekday, teacher, Summary and Master Data sheets |
+| Pastel per weekday | day grouping on the semester sheets and the Contents page |
+| Green | free / balanced / complete / a suggested move / the current revision |
+| Amber | needs a look: short on hours, under-used, evening shift, non-credited, a move or a re-rooming |
+| Red | stop: a clash, a class with no room, not scheduled, over-loaded |
+| Tab colour | semester sheets green, weekday sheets violet, By Teacher amber, reports red — and the Contents page repeats it as a light wash per row |
+
+### Fixed  🐛
+
+* The new report prose said `0 move(s)` and `3 teacher(s)`; the export no longer
+  contains a single `(s)` anywhere but the one column header that needs it.
+* **Load balancing is offered only where it works.** It was briefly added to the
+  *Publish* (PDF) scope list, whose writer cannot draw it; it now lives in the
+  Reports dialog, which can.
+
+**Tests:** backend **185 passing** (was 172), with 13 new checks covering the
+free-slot matrix and its red "no room" case, the balancing engine's "only to
+somebody who is free" rule and its API, the colour pass on five sheets, the
+Contents colour coding, every kind of revision diff, reading a workbook back
+for the diff, revision numbering from the folder, and versioned file names
+through the API. Frontend jsdom: **31 export-dialog checks** (was 23), all
+green.
+
 ## 2.1.0 — the Excel export becomes a semester book
 
 The export was rewritten around the one thing a timetable is actually handed

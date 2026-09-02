@@ -74,6 +74,28 @@ def _argb(hex_color: str, fallback: str = "FFDDDDDD") -> str:
     return f"FF{value}" if len(value) == 6 else fallback
 
 
+def _tint(hex_color: str, strength: float = 0.74) -> str:
+    """A light, printable version of a catalogue colour.
+
+    ``strength`` is how much white is mixed in: 0.74 keeps the hue clearly
+    recognisable while leaving black text readable, which is what a printed
+    timetable needs.  Anything unparseable falls back to the neutral band.
+    """
+    value = (hex_color or "").lstrip("#")
+    if len(value) != 6:
+        return BAND_FILL
+    mixed = []
+    for index in (0, 2, 4):
+        channel = int(value[index : index + 2], 16)
+        mixed.append(int(round(channel + (255 - channel) * strength)))
+    return "FF" + "".join(f"{channel:02X}" for channel in mixed)
+
+
+def _course_tint(entry: dict[str, Any]) -> str:
+    """The course's own colour, lightened - the same identity the grid uses."""
+    return _tint(str(entry.get("color") or ""), 0.74)
+
+
 def _class_label(entry: dict[str, Any]) -> str:
     code = entry.get("code") or ""
     lab = " [LAB]" if (entry.get("kind") == "lab") else ""
@@ -149,6 +171,16 @@ SCHEDULE_DAY_FILLS = {
 
 # Alternating tints for the groupings that are not days (section / teacher).
 GROUP_FILLS = ["FFEFF3FA", "FFF7F0F5", "FFEFF7F2", "FFFDF6EA", "FFF3F0FA"]
+
+# Semantic colours.  Green = good / free, amber = needs a look, red = stop.
+# They are used the same way on every sheet so the palette reads as a language.
+FREE_FILL = "FFD8EFDC"          # the section is free at this slot
+BUSY_FILL = "FFFCE4C8"          # already booked
+NO_ROOM_FILL = "FFF8D7DA"       # free for the section, but no room left
+EVENING_FILL = "FFFDF1D6"       # evening shift
+GOOD_FILL = "FFE6F2E6"          # balanced / complete / suggested
+WATCH_FILL = "FFFCE8D5"         # short / under-used
+BAD_FILL = "FFF8D7DA"           # clash / not scheduled / over-loaded
 
 # A course with zero credit hours is reported as a non-credited course.  This
 # is a shared label between the Excel and PDF schedules (and the only place
@@ -518,6 +550,10 @@ def _grouped_rows(
         cell.alignment = theme.left
         return start_row + 1
 
+    # The course title wears the course's own colour, so a reader can follow
+    # one subject down the page exactly as they follow it across the grid.
+    title_column = headers.index("Course Title") + 1 if "Course Title" in headers else 0
+
     data_row = start_row
     for index, (key, block) in enumerate(groups):
         first = data_row
@@ -533,12 +569,13 @@ def _grouped_rows(
                 cell = sheet.cell(row=data_row, column=column, value=value)
                 cell.border = theme.border
                 cell.alignment = theme.left if headers[column - 1] in LEFT_ALIGN_HEADERS else theme.centre
-                cell.fill = _fill(band)
+                cell.fill = _fill(_course_tint(entry) if column == title_column else band)
                 if column == 1:
                     continue
                 if headers[column - 1] == "C.Hrs" and credits == 0:
                     cell.font = theme.font(bold=True, italic=True, color="FF9C4330",
                                            size=int(max(8, theme.font_size - 1)))
+                    cell.fill = _fill(WATCH_FILL)
                 else:
                     cell.font = theme.font(size=theme.font_size)
             sheet.row_dimensions[data_row].height = row_height
@@ -790,6 +827,37 @@ def _draw_teacher_sheet(
             "detail": _plural(totals["teachers"], "teacher")}
 
 
+def summary_records(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Summary sheet as plain records, keyed by its own column names.
+
+    Both the Summary worksheet and :func:`diff_summaries` read from here, so the
+    "what changed since the last revision" list can never disagree with the
+    sheet it is comparing against.
+    """
+    ordered = sorted(
+        entries,
+        key=lambda e: (int(e.get("day") or 0), _minutes(e), str(e.get("room_label") or "")),
+    )
+    records: list[dict[str, Any]] = []
+    for entry in ordered:
+        records.append({
+            "Day": WEEKDAYS[int(entry["day"]) - 1],
+            "Shift": (entry.get("shift") or "morning").capitalize(),
+            "Semester": int(entry.get("semester") or 0) or "-",
+            "Type": "Lab" if entry.get("kind") == "lab" else "Theory",
+            "C.Hrs": int(entry.get("credit_hours") or 0),
+            "Start": format_12h(entry["start_time"]),
+            "End": format_12h(entry["end_time"]),
+            "Code": entry.get("code", ""),
+            "Course": entry["course_name"],
+            "Section": entry.get("section", ""),
+            "Teacher": entry.get("instructor", ""),
+            "Room": entry.get("room_label", entry.get("room_id")),
+            "Students": entry.get("num_students", ""),
+        })
+    return records
+
+
 def _draw_summary_sheet(
     workbook,
     theme: _Theme,
@@ -821,27 +889,30 @@ def _draw_summary_sheet(
 
     for offset, entry in enumerate(ordered):
         row = header_row + 1 + offset
-        values = [
-            WEEKDAYS[int(entry["day"]) - 1],
-            (entry.get("shift") or "morning").capitalize(),
-            int(entry.get("semester") or 0) or "-",
-            "Lab" if entry.get("kind") == "lab" else "Theory",
-            int(entry.get("credit_hours") or 0),
-            format_12h(entry["start_time"]),
-            format_12h(entry["end_time"]),
-            entry.get("code", ""),
-            entry["course_name"],
-            entry.get("section", ""),
-            entry.get("instructor", ""),
-            entry.get("room_label", entry.get("room_id")),
-            entry.get("num_students", ""),
-        ]
+        # One record per class, from the same helper the revision diff reads.
+        record = summary_records([entry])[0]
+        values = [record[column] for column in SUMMARY_HEADERS]
+        evening = str(entry.get("shift") or "morning").lower() == "evening"
+        non_credited = not int(entry.get("credit_hours") or 0)
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = theme.border
             cell.font = theme.font(size=theme.font_size)
             cell.alignment = theme.left if column in (9, 11, 12) else theme.centre
-            if offset % 2 == 1:
+            # Course colour for identity, amber for the evening shift, amber
+            # again for a non-credited course - the three things a coordinator
+            # scans the Summary for.
+            if column == 9:
+                cell.fill = _fill(_course_tint(entry))
+                cell.font = theme.font(size=theme.font_size, bold=True)
+            elif column == 2 and evening:
+                cell.fill = _fill(EVENING_FILL)
+                cell.font = theme.font(size=theme.font_size, bold=True, color="FF9C6500")
+            elif column == 5 and non_credited:
+                cell.fill = _fill(WATCH_FILL)
+                cell.font = theme.font(size=theme.font_size, bold=True, italic=True,
+                                       color="FF9C4330")
+            elif offset % 2 == 1:
                 cell.fill = _fill(BAND_FILL)
 
     from openpyxl.utils import get_column_letter
@@ -872,6 +943,7 @@ def _draw_report_sheet(
     name: str,
     meta: dict[str, str],
     orientation: str,
+    tint_columns: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """One of the three reports, with the same title block as everything else."""
     headers = list(report.get("headers") or [])
@@ -914,6 +986,10 @@ def _draw_report_sheet(
                 status = sheet.cell(row=target, column=status_column)
                 status.fill = _fill(tint)
                 status.font = theme.font(size=theme.font_size, bold=True)
+        for column, heading in enumerate(headers, start=1):
+            tint = (tint_columns or {}).get(str(heading))
+            if tint:
+                sheet.cell(row=target, column=column).fill = _fill(tint)
 
     widths = [10, 10, 10, 13, 14, 10] if "Load" in headers else [12, 13, 12, 14, 12, 13, 12, 40]
     _finish_sheet(
@@ -1265,7 +1341,7 @@ def _draw_master_sheet(
     )
 
     def table(row: int, title: str, headers: Sequence[str], rows: Sequence[Sequence[Any]],
-              widths: Sequence[float]) -> int:
+              widths: Sequence[float], tints: Sequence[str] = ()) -> int:
         cell = sheet.cell(row=row, column=1, value=title)
         cell.font = theme.font(bold=True, size=12, color=HEADING_COLOR)
         cell.alignment = theme.left
@@ -1273,12 +1349,16 @@ def _draw_master_sheet(
         _draw_header(sheet, row, headers, theme, height=24)
         for offset, values in enumerate(rows):
             target = row + 1 + offset
+            wash = tints[offset] if offset < len(tints) else ""
             for column, value in enumerate(values, start=1):
                 c = sheet.cell(row=target, column=column, value=value)
                 c.border = theme.border
                 c.font = theme.font(size=theme.font_size)
                 c.alignment = theme.left if column in (2, 3, 5) else theme.centre
-                if offset % 2 == 1:
+                # the course column keeps the course's own colour
+                if column == 3 and wash:
+                    c.fill = _fill(wash)
+                elif offset % 2 == 1:
                     c.fill = _fill(BAND_FILL)
         return row + len(rows) + 3
 
@@ -1293,7 +1373,9 @@ def _draw_master_sheet(
             "sections": set(),
             "teachers": set(),
             "students": 0,
+            "color": str(entry.get("color") or ""),
         })
+        bucket["color"] = bucket["color"] or str(entry.get("color") or "")
         bucket["lab"] = max(bucket["lab"], int(entry.get("lab_credit_hours") or 0))
         bucket["credit"] = max(bucket["credit"], int(entry.get("credit_hours") or 0))
         bucket["sections"].add(str(entry.get("section") or "").upper())
@@ -1305,7 +1387,12 @@ def _draw_master_sheet(
          ", ".join(sorted(bucket["teachers"])), bucket["students"]]
         for key, bucket in sorted(courses.items(), key=lambda item: (item[1]["semester"], item[0][1], item[0][2]))
     ]
-    row = table(header_row, "Courses", MASTER_COURSE_HEADERS, course_rows, SUMMARY_WIDTHS)
+    row = table(
+        header_row, "Courses", MASTER_COURSE_HEADERS, course_rows, SUMMARY_WIDTHS,
+        tints=[_tint(bucket["color"], 0.74)
+               for _, bucket in sorted(courses.items(),
+                                       key=lambda item: (item[1]["semester"], item[0][1], item[0][2]))],
+    )
 
     # ---- teachers --------------------------------------------------------- #
     teachers: dict[str, dict[str, Any]] = {}
@@ -1358,6 +1445,367 @@ def _draw_master_sheet(
                       f"{_plural(len(teacher_rows), 'teacher')}, {_plural(len(room_rows), 'room')}"}
 
 
+def _sections_in(entries: Iterable[dict[str, Any]]) -> list[tuple[int, str]]:
+    """Every (semester, section) batch on the grid, in the order they are taught."""
+    return sorted(
+        {(int(e.get("semester") or 0), str(e.get("section") or "").upper()) for e in entries},
+        key=lambda key: (key[0], key[1]),
+    )
+
+
+def _overlap_window(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
+    return a_start < b_end and b_start < a_end
+
+
+def _classes_in_slot(entries: Iterable[dict[str, Any]], day: int, slot: dict[str, str]) -> list[dict[str, Any]]:
+    """Every class that occupies any part of ``slot`` on ``day``."""
+    try:
+        start, end = to_minutes(slot["start"]), to_minutes(slot["end"])
+    except Exception:
+        return []
+    found = []
+    for entry in entries:
+        if int(entry.get("day") or 0) != day:
+            continue
+        try:
+            e_start, e_end = to_minutes(str(entry["start_time"])), to_minutes(str(entry["end_time"]))
+        except Exception:
+            continue
+        if _overlap_window(start, end, e_start, e_end):
+            found.append(entry)
+    return found
+
+
+def _slot_label(slot: dict[str, str]) -> str:
+    try:
+        return f"{format_12h(slot['start'])}\n{format_12h(slot['end'])}"
+    except Exception:
+        return f"{slot.get('start', '')}\n{slot.get('end', '')}"
+
+
+def _draw_free_slots_sheet(
+    workbook,
+    theme: _Theme,
+    entries: list[dict[str, Any]],
+    rooms: list[dict[str, Any]],
+    *,
+    days: int,
+    slots: list[dict[str, str]],
+    meta: dict[str, str],
+    heading: str,
+    orientation: str,
+) -> dict[str, Any]:
+    """Where a missed class can go, and which room would take it.
+
+    Part A is a green/amber matrix per batch - one row per weekday, one column
+    per slot - so a coordinator hunting for a home for one class reads a single
+    row.  A cell turns **red** when the batch is free but *no room is free*,
+    because that slot is not actually usable.  Part B lists the free rooms at
+    every slot, so the next step needs no further looking-up.
+    """
+    ncols = max(4, len(slots) + 2)
+    sheet = workbook.create_sheet("Free Slots")
+    sections = _sections_in(entries)
+    header_row = _title_block(
+        sheet, ncols, theme,
+        heading=f"{heading} — Free Slots",
+        extra=[f"{_plural(len(sections), 'batch')} · {_plural(len(slots), 'slot')} a day · "
+               "green = the batch is free, amber = already booked, red = free but no room left"],
+        institution=meta.get("institution", ""),
+        program=meta.get("program", ""),
+    )
+
+    all_rooms = list(rooms)
+    known = {int(r.get("id")) for r in all_rooms}
+    for entry in entries:
+        rid = int(entry.get("room_id") or 0)
+        if rid and rid not in known:
+            known.add(rid)
+            all_rooms.append({"id": rid, "label": entry.get("room_label") or rid,
+                              "capacity": int(entry.get("capacity") or 0)})
+
+    def room_label(room: dict[str, Any]) -> str:
+        return str(room.get("label") or room.get("room_number") or room.get("id"))
+
+    # ---- part A: open slots per batch ------------------------------------- #
+    row = header_row
+    band_index = 0
+    total_free = 0
+    for semester, section in sections:
+        batch = [e for e in entries
+                 if int(e.get("semester") or 0) == semester and str(e.get("section") or "").upper() == section]
+        label = (f"Semester {semester}" if semester else "Semester —") + \
+                (f" · Section {section}" if section else "")
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ncols)
+        title_cell = sheet.cell(row=row, column=1, value=label)
+        title_cell.font = theme.font(bold=True, size=11, color=TEXT_COLOR)
+        title_cell.alignment = theme.left
+        band = GROUP_FILLS[band_index % len(GROUP_FILLS)]
+        band_index += 1
+        for column in range(1, ncols + 1):
+            sheet.cell(row=row, column=column).fill = _fill(band)
+        sheet.row_dimensions[row].height = 18
+        row += 1
+
+        headers = ["Day", *[_slot_label(slot) for slot in slots], "Free slots"]
+        _draw_header(sheet, row, headers[:ncols], theme, height=26)
+        row += 1
+
+        for day in range(1, days + 1):
+            day_cell = sheet.cell(row=row, column=1, value=WEEKDAYS[day - 1])
+            day_cell.font = theme.font(bold=True, size=theme.font_size)
+            day_cell.alignment = theme.centre
+            day_cell.border = theme.border
+            day_cell.fill = _fill(SCHEDULE_DAY_FILLS.get(day, BAND_FILL))
+            free_here = 0
+            for index, slot in enumerate(slots, start=2):
+                cell = sheet.cell(row=row, column=index)
+                cell.border = theme.border
+                cell.alignment = theme.centre
+                clash = [
+                    e for e in _classes_in_slot(batch, day, slot)
+                ]
+                if clash:
+                    blocker = clash[0]
+                    cell.value = str(blocker.get("code") or blocker.get("course_name") or "busy")
+                    cell.fill = _fill(BUSY_FILL)
+                    cell.font = theme.font(size=int(max(7, theme.font_size - 2)), color="FF7A4B12")
+                    continue
+                free_here += 1
+                booked = {int(e.get("room_id") or 0)
+                          for e in _classes_in_slot(entries, day, slot)}
+                free_rooms = [r for r in all_rooms if int(r.get("id")) not in booked]
+                if not free_rooms:
+                    cell.value = "no room"
+                    cell.fill = _fill(NO_ROOM_FILL)
+                    cell.font = theme.font(size=int(max(7, theme.font_size - 2)),
+                                           bold=True, color="FF9C0006")
+                else:
+                    cell.value = "free"
+                    cell.fill = _fill(FREE_FILL)
+                    cell.font = theme.font(size=int(max(7, theme.font_size - 2)), color="FF1E6B34")
+            total_free += free_here
+            count = sheet.cell(row=row, column=min(ncols, len(slots) + 2), value=free_here)
+            count.font = theme.font(bold=True, size=theme.font_size,
+                                    color="FF1E6B34" if free_here else "FF9C0006")
+            count.alignment = theme.centre
+            count.border = theme.border
+            count.fill = _fill(FREE_FILL if free_here else NO_ROOM_FILL)
+            sheet.row_dimensions[row].height = 22
+            row += 1
+        row += 1
+
+    # ---- part B: which rooms are free at each slot ------------------------- #
+    sheet.cell(row=row, column=1, value="Free rooms at each slot").font = theme.font(
+        bold=True, size=12, color=HEADING_COLOR)
+    sheet.cell(row=row, column=1).alignment = theme.left
+    row += 1
+    room_headers = ["Day", "Time", "Free rooms", "Free seats", "Booked rooms"]
+    _draw_header(sheet, row, room_headers, theme, height=24)
+    row += 1
+    offset = 0
+    for day in range(1, days + 1):
+        for slot in slots:
+            booked_entries = _classes_in_slot(entries, day, slot)
+            booked = {int(e.get("room_id") or 0) for e in booked_entries}
+            free_rooms = [r for r in all_rooms if int(r.get("id")) not in booked]
+            labels = [room_label(r) for r in free_rooms]
+            shown = ", ".join(labels[:8]) + (f"  (+{len(labels) - 8} more)" if len(labels) > 8 else "")
+            try:
+                window = f"{format_12h(slot['start'])} - {format_12h(slot['end'])}"
+            except Exception:
+                window = f"{slot.get('start', '')} - {slot.get('end', '')}"
+            values = [
+                WEEKDAYS[day - 1],
+                window,
+                shown or "— none —",
+                sum(int(r.get("capacity") or 0) for r in free_rooms),
+                ", ".join(sorted({room_label(next((q for q in all_rooms
+                                                      if int(q.get("id")) == int(e.get("room_id"))), e))
+                                  for e in booked_entries})) or "—",
+            ]
+            for column, value in enumerate(values, start=1):
+                cell = sheet.cell(row=row, column=column, value=value)
+                cell.border = theme.border
+                cell.font = theme.font(size=theme.font_size)
+                cell.alignment = theme.left if column in (3, 5) else theme.centre
+                if not free_rooms:
+                    cell.fill = _fill(NO_ROOM_FILL)
+                elif offset % 2 == 1:
+                    cell.fill = _fill(BAND_FILL)
+            sheet.row_dimensions[row].height = 20
+            row += 1
+            offset += 1
+
+    _note(
+        sheet, row + 1, theme,
+        "Green means that batch has nothing in that slot; red means it is free but every room is already "
+        "booked, so the slot is not actually usable.  Times overlap, so a 90-minute lab counts against "
+        "every slot it touches.",
+    )
+    _finish_sheet(
+        sheet, theme, header_row=0, ncols=ncols,
+        widths=[13] + [13] * len(slots) + [11],
+        orientation=orientation, tab="extra", freeze=None, repeat_header=False,
+        footer_title="Free Slots",
+    )
+    return {"name": "Free Slots", "classes": total_free,
+            "detail": f"{_plural(len(sections), 'batch')} × {_plural(len(slots), 'slot')}, "
+                      f"{_plural(total_free, 'open slot')}"}
+
+
+def _draw_balance_sheet(
+    workbook,
+    theme: _Theme,
+    entries: list[dict[str, Any]],
+    *,
+    meta: dict[str, str],
+    orientation: str,
+) -> dict[str, Any]:
+    """Concrete moves that even the teaching load out.
+
+    Delegates the arithmetic to :func:`timetable.reports.load_balance_suggestions`
+    so the sheet, the API and the PDF can never disagree about what to move.
+    """
+    from .reports import load_balance_suggestions
+
+    report = load_balance_suggestions(entries)
+    result = _draw_report_sheet(
+        workbook, theme, report, name="Load Balancing", meta=meta, orientation=orientation,
+        tint_columns={
+            "Over-loaded teacher": BUSY_FILL,
+            "Suggested teacher": GOOD_FILL,
+            "After the move": GOOD_FILL,
+        },
+    )
+    result["detail"] = f"{_plural(report.get('moves', 0), 'move')} suggested"
+    return result
+
+
+def _draw_revisions_sheet(
+    workbook,
+    theme: _Theme,
+    *,
+    meta: dict[str, str],
+    heading: str,
+    orientation: str,
+    revision: int,
+    filename: str,
+    history: list[dict[str, Any]],
+    changes: list[tuple[str, str]],
+    previous_name: str = "",
+    total_classes: int = 0,
+) -> dict[str, Any]:
+    """Which revision this file is, and what changed since the last one.
+
+    Without this a folder full of ``timetable (2).xlsx`` says nothing about
+    which copy is current.  Each row of the change list is coloured by kind:
+    green added, red removed, amber moved or re-roomed.
+    """
+    from . import __version__
+
+    ncols = 5
+    sheet = workbook.create_sheet("Revisions")
+    header_row = _title_block(
+        sheet, ncols, theme,
+        heading=f"{heading} — Revision {revision}",
+        # no sheet count here: the Contents page is built after this sheet and
+        # is the place that reports the total accurately.
+        extra=[f"Exported {_stamp()} · {filename}",
+               f"{_plural(total_classes, 'class')} · "
+               f"Automated Timetable Generator {__version__}"],
+        institution=meta.get("institution", ""),
+        program=meta.get("program", ""),
+        semester=meta.get("semester", ""),
+        commencement=meta.get("commencement", ""),
+    )
+
+    def block_title(row: int, text: str) -> int:
+        cell = sheet.cell(row=row, column=1, value=text)
+        cell.font = theme.font(bold=True, size=12, color=HEADING_COLOR)
+        cell.alignment = theme.left
+        return row + 1
+
+    # ---- what changed ----------------------------------------------------- #
+    row = block_title(header_row, f"What changed since {previous_name or 'the previous revision'}")
+    change_headers = ["Change", "Class", "", "", ""]
+    _draw_header(sheet, row, change_headers, theme, height=22)
+    row += 1
+    kind_fills = {
+        "Added": GOOD_FILL,
+        "Removed": BAD_FILL,
+        "Moved": WATCH_FILL,
+        "Room changed": WATCH_FILL,
+        "Teacher changed": WATCH_FILL,
+    }
+    if not changes:
+        cell = sheet.cell(row=row, column=1, value="No changes — the timetable matches the previous revision.")
+        cell.font = theme.font(italic=True, size=10, color="FF1E6B34")
+        cell.alignment = theme.left
+        row += 1
+    for offset, (kind, text) in enumerate(changes):
+        label = sheet.cell(row=row, column=1, value=kind)
+        label.font = theme.font(bold=True, size=theme.font_size)
+        label.alignment = theme.centre
+        label.border = theme.border
+        label.fill = _fill(kind_fills.get(kind, BAND_FILL))
+        body = sheet.cell(row=row, column=2, value=text)
+        body.font = theme.font(size=theme.font_size)
+        body.alignment = theme.left
+        for column in range(2, ncols + 1):
+            sheet.cell(row=row, column=column).border = theme.border
+            if column > 2 and offset % 2 == 1:
+                sheet.cell(row=row, column=column).fill = _fill(BAND_FILL)
+        sheet.merge_cells(start_row=row, start_column=2, end_row=row, end_column=ncols)
+        sheet.row_dimensions[row].height = 18
+        row += 1
+    row += 1
+
+    # ---- revision history ------------------------------------------------- #
+    row = block_title(row, "Revision history")
+    history_headers = ["Rev", "File", "Exported", "Classes", "Size"]
+    _draw_header(sheet, row, history_headers, theme, height=22)
+    row += 1
+    if not history:
+        cell = sheet.cell(row=row, column=1, value="This is the first revision saved in this folder.")
+        cell.font = theme.font(italic=True, size=10, color=NOTE_COLOR)
+        cell.alignment = theme.left
+        row += 1
+    for item in history:
+        is_current = int(item.get("revision") or 0) == int(revision)
+        values = [
+            f"rev {item.get('revision')}" + ("  ← this file" if is_current else ""),
+            item.get("name", ""),
+            item.get("modified", ""),
+            item.get("classes", ""),
+            item.get("size", ""),
+        ]
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=column, value=value)
+            cell.border = theme.border
+            cell.font = theme.font(size=theme.font_size, bold=is_current)
+            cell.alignment = theme.left if column == 2 else theme.centre
+            if is_current:
+                cell.fill = _fill(GOOD_FILL)
+            elif column == 1:
+                cell.fill = _fill(BAND_FILL)
+        sheet.row_dimensions[row].height = 18
+        row += 1
+
+    _note(
+        sheet, row + 1, theme,
+        "Revisions are numbered by what is already in this folder, so nothing is ever overwritten. "
+        "The change list is read back out of the previous revision's Summary sheet.",
+    )
+    _finish_sheet(
+        sheet, theme, header_row=0, ncols=ncols, widths=[18, 40, 20, 10, 12],
+        orientation=orientation, tab="contents", freeze=None, repeat_header=False,
+        footer_title=f"Revision {revision}",
+    )
+    return {"name": "Revisions", "classes": len(changes),
+            "detail": f"revision {revision} · {_plural(len(changes), 'change')} since the last export"}
+
+
 def _draw_contents_sheet(
     workbook,
     theme: _Theme,
@@ -1390,12 +1838,21 @@ def _draw_contents_sheet(
     row = header_row + 1
     for offset, item in enumerate(index):
         name = str(item.get("name") or "")
+        # A row wears a light wash of its own tab colour, so the index shows the
+        # same grouping the sheet bar does: semester sheets green, weekday
+        # sheets violet, reports red.
+        tab = ""
+        try:
+            tab = str(workbook[name].sheet_properties.tabColor.rgb or "")[-6:]
+        except Exception:
+            tab = ""
+        wash = _tint(tab, 0.82) if len(tab) == 6 else ""
         link = sheet.cell(row=row, column=1, value=name)
         try:
             link.hyperlink = Hyperlink(ref=link.coordinate, location=f"'{name}'!A1", display=name)
         except Exception:  # pragma: no cover - very old openpyxl
             pass
-        link.font = theme.font(size=theme.font_size, color="FF1F4E9C", underline="single")
+        link.font = theme.font(size=theme.font_size, color="FF1F4E9C", underline="single", bold=True)
         link.alignment = theme.left
         link.border = theme.border
         for column, value in enumerate([item.get("detail", ""), item.get("classes", "")], start=2):
@@ -1403,7 +1860,10 @@ def _draw_contents_sheet(
             cell.font = theme.font(size=theme.font_size)
             cell.alignment = theme.left if column == 2 else theme.centre
             cell.border = theme.border
-        if offset % 2 == 1:
+        if wash:
+            for column in range(1, ncols + 1):
+                sheet.cell(row=row, column=column).fill = _fill(wash)
+        elif offset % 2 == 1:
             for column in range(1, ncols + 1):
                 sheet.cell(row=row, column=column).fill = _fill(BAND_FILL)
         row += 1
@@ -1450,6 +1910,13 @@ def build_workbook(
     show_dashboard: bool = True,
     show_master_data: bool = True,
     contents: bool = True,
+    show_free_slots: bool = True,
+    show_balance: bool = True,
+    revision: int = 0,
+    revision_file: str = "",
+    revision_history: list[dict[str, Any]] | None = None,
+    revision_changes: list[tuple[str, str]] | None = None,
+    revision_previous: str = "",
 ) -> bytes:
     """Render the timetable into an .xlsx workbook and return the bytes.
 
@@ -1589,6 +2056,17 @@ def build_workbook(
                                          heading=heading, orientation=orientation,
                                          non_credited_label=non_credited_label))
 
+    # ------------------------------------------------- coordinator actions -- #
+    # The two sheets that answer "where can this class go?" and "who should
+    # take it?" - the ones a coordinator uses while fixing a timetable.
+    if layout != "grid" and show_free_slots and slots:
+        index.append(_draw_free_slots_sheet(workbook, theme, entries, rooms,
+                                            days=day_count, slots=slots, meta=meta,
+                                            heading=heading, orientation=orientation))
+    if layout != "grid" and show_balance:
+        index.append(_draw_balance_sheet(workbook, theme, entries, meta=meta,
+                                         orientation=orientation))
+
     # --------------------------------------------------------------- extras -- #
     if layout != "grid" and show_audit:
         index.append(_draw_audit_sheet(workbook, theme, entries, unscheduled, meta=meta,
@@ -1622,9 +2100,26 @@ def build_workbook(
         index.append(_draw_unscheduled_sheet(workbook, theme, unscheduled, meta=meta,
                                              heading=heading, orientation=orientation))
 
+    # A revision sheet only makes sense when the caller knows which revision
+    # this is - the web layer works that out from the target folder.  It is
+    # built before the Contents page so the index can list it too.
+    if revision:
+        index.append(_draw_revisions_sheet(
+            workbook, theme, meta=meta, heading=heading, orientation=orientation,
+            revision=revision, filename=revision_file,
+            history=revision_history or [],
+            changes=revision_changes or [],
+            previous_name=revision_previous,
+            total_classes=len(entries),
+        ))
+
     if contents:
         _draw_contents_sheet(workbook, theme, index, meta=meta, heading=heading,
                              orientation=orientation, layout=layout, total_classes=len(entries))
+
+    if revision and "Revisions" in workbook.sheetnames:
+        # Contents first, the revision record immediately after it.
+        workbook.move_sheet("Revisions", offset=1 - workbook.sheetnames.index("Revisions"))
 
     # Finally, sweep every sheet and force our chosen font onto any cell that
     # is still carrying the workbook template default ("Calibri").  We style
@@ -1996,6 +2491,121 @@ def build_csv(entries: list[dict[str, Any]]) -> bytes:
     BOM is included so Excel opens accented names correctly on Windows.
     """
     return _csv_bytes(CSV_HEADERS, _csv_rows(entries))
+
+
+# --------------------------------------------------------------------------- #
+# Revisions: reading a previous export back so a new one can be diffed
+# --------------------------------------------------------------------------- #
+def read_summary_rows(data: bytes) -> list[dict[str, Any]]:
+    """Read the class rows back out of a workbook this app wrote.
+
+    Used to build the "what changed" list on the Revisions sheet.  Returns an
+    empty list for anything unreadable - a revision sheet must never be the
+    reason an export fails.
+    """
+    try:
+        from openpyxl import load_workbook
+
+        book = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        if "Summary" not in book.sheetnames:
+            return []
+        sheet = book["Summary"]
+        rows = list(sheet.iter_rows(values_only=True))
+        header_index = next(
+            (i for i, row in enumerate(rows) if row and str(row[0]).strip() == "Day"), None
+        )
+        if header_index is None:
+            return []
+        headers = [str(h).strip() if h is not None else "" for h in rows[header_index]]
+        found: list[dict[str, Any]] = []
+        for row in rows[header_index + 1:]:
+            if not row or row[0] is None:
+                continue
+            record = dict(zip(headers, row))
+            if str(record.get("Day", "")) not in WEEKDAYS:
+                continue
+            found.append(record)
+        book.close()
+        return found
+    except Exception:
+        return []
+
+
+def _summary_identity(record: dict[str, Any]) -> tuple[Any, ...]:
+    """Which class a Summary row is: code/course + section + theory-or-lab."""
+    return (
+        str(record.get("Code") or ""),
+        str(record.get("Course") or ""),
+        str(record.get("Section") or "").upper(),
+        str(record.get("Type") or "Theory"),
+    )
+
+
+def _summary_place(record: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        str(record.get("Day") or ""),
+        str(record.get("Start") or ""),
+        str(record.get("End") or ""),
+        str(record.get("Room") or ""),
+        str(record.get("Teacher") or ""),
+    )
+
+
+def _describe(record: dict[str, Any]) -> str:
+    code = str(record.get("Code") or "")
+    name = str(record.get("Course") or "")
+    section = str(record.get("Section") or "")
+    lab = " (Lab)" if str(record.get("Type") or "") == "Lab" else ""
+    return f"{code + ' ' if code else ''}{name}{lab} · Section {section}"
+
+
+def diff_summaries(
+    previous: list[dict[str, Any]],
+    current: list[dict[str, Any]],
+    *,
+    limit: int = 200,
+) -> list[tuple[str, str]]:
+    """What moved between two exports: added, removed, moved, re-roomed, re-taught.
+
+    A course-section can legitimately meet more than once a week, so rows are
+    paired by identity *and* by order within that identity - the first Monday
+    lecture against the first Monday lecture - which keeps two meetings of the
+    same class from being reported as one move.
+    """
+    def grouped(rows: list[dict[str, Any]]) -> dict[tuple[Any, ...], list[dict[str, Any]]]:
+        buckets: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+        for record in rows:
+            buckets.setdefault(_summary_identity(record), []).append(record)
+        for bucket in buckets.values():
+            bucket.sort(key=_summary_place)
+        return buckets
+
+    old = grouped(previous)
+    new = grouped(current)
+    changes: list[tuple[str, str]] = []
+
+    for key in sorted(set(new) - set(old)):
+        for record in new[key]:
+            changes.append(("Added", f"{_describe(record)} — {_summary_place(record)[0]} "
+                                     f"{_summary_place(record)[1]}, room {_summary_place(record)[3]}"))
+    for key in sorted(set(old) - set(new)):
+        for record in old[key]:
+            changes.append(("Removed", f"{_describe(record)} — was {_summary_place(record)[0]} "
+                                       f"{_summary_place(record)[1]}, room {_summary_place(record)[3]}"))
+    for key in sorted(set(old) & set(new)):
+        for before, after in zip(old[key], new[key]):
+            was, now = _summary_place(before), _summary_place(after)
+            if was[:3] != now[:3]:
+                changes.append(("Moved", f"{_describe(after)} — "
+                                         f"{was[0]} {was[1]} → {now[0]} {now[1]}"))
+            elif was[3] != now[3]:
+                changes.append(("Room changed", f"{_describe(after)} — {was[3]} → {now[3]}"))
+            elif was[4] != now[4]:
+                changes.append(("Teacher changed", f"{_describe(after)} — {was[4] or 'Unassigned'} → "
+                                                   f"{now[4] or 'Unassigned'}"))
+    order = {"Added": 0, "Removed": 1, "Moved": 2, "Room changed": 3, "Teacher changed": 4}
+    changes.sort(key=lambda item: (order.get(item[0], 9), item[1]))
+    return changes[:limit]
 
 
 def build_csv_bundle(
